@@ -18,7 +18,7 @@ The river is always moving, always changing — a collective artwork created by 
 
 - **Next.js 16** — React framework with App Router
 - **Vercel KV** — Redis-based storage for feelings
-- **WebGL2** — Hardware-accelerated ribbon rendering with glow effects
+- **WebGL2 / p5.js** — Hardware-accelerated ribbon rendering with glow effects (p5.js fallback)
 - **Framer Motion** — Smooth UI animations
 - **Tailwind CSS 4** — Styling
 

@@ -68,16 +68,21 @@ This creates a natural lifecycle: new feelings are bold, bright, and fast; as th
 
 ## Visual Rendering
 
-### WebGL2 Ribbon Renderer
+### WebGL2 Ribbon Renderer (Primary)
 - Hardware-accelerated rendering for smooth 60fps performance
 - Multi-layer glow effect for each ribbon
 - Catmull-Rom spline interpolation for smooth curves from sparse point data
 - Ribbons are rendered with tapered strokes (thicker middle, thinner ends)
 
+### p5.js Canvas Renderer (Fallback)
+- Canvas-based fallback for devices without WebGL2 support
+- Same visual features: glow effects, tapered strokes, particles
+- Slightly lower performance but broader compatibility
+
 ### Performance Optimizations
 - Server sends only 32 points per ribbon; client interpolates to full smoothness
 - ETag-based caching to minimize API calls
-- WebGL2 for GPU-accelerated rendering
+- WebGL2 for GPU-accelerated rendering (with p5.js fallback)
 - Efficient ribbon culling and batching
 
 ## Technical Architecture

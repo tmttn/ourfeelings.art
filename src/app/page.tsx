@@ -1,65 +1,282 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import P5Canvas from "@/components/P5Canvas";
+import AmbientInfo from "@/components/AmbientInfo";
+import EmotionPicker from "@/components/EmotionPicker";
+import Settings, { DEFAULT_SETTINGS, MOBILE_DEFAULT_SETTINGS, type PerformanceSettings } from "@/components/Settings";
+import { useIsMobile, usePrefersReducedMotion } from "@/lib/useIsMobile";
+import type { Feeling } from "@/types";
+import type { Emotion } from "@/lib/emotions";
+
+const POLL_INTERVAL = 15000; // 15 seconds when active
+const POLL_INTERVAL_HIDDEN = 60000; // 60 seconds when tab is hidden
+const IDLE_TIMEOUT = 3000; // 3 seconds of no interaction
+const MOBILE_IDLE_TIMEOUT = 5000; // 5 seconds on mobile (longer since no hover)
+const STORAGE_KEY = "river-of-feelings-hash";
+
+// Reduced motion settings - minimal animation for accessibility
+const REDUCED_MOTION_SETTINGS: PerformanceSettings = {
+  maxVisibleRibbons: 20,
+  catmullRomSegments: 2,
+  enableGlow: false,
+  targetParticles: 0, // No ambient particles
+};
 
 export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+  const isMobile = useIsMobile();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [feelings, setFeelings] = useState<Feeling[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uiVisible, setUiVisible] = useState(true);
+  const [updateHash, setUpdateHash] = useState<string | null>(null);
+  const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+  const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_SETTINGS);
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const rateLimitTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasSetMobileDefaults = useRef(false);
+  const etagRef = useRef<string | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Apply mobile/reduced-motion defaults when detected
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      // Reduced motion takes priority - minimal animations
+      setPerformanceSettings(REDUCED_MOTION_SETTINGS);
+      hasSetMobileDefaults.current = true;
+    } else if (isMobile && !hasSetMobileDefaults.current) {
+      hasSetMobileDefaults.current = true;
+      setPerformanceSettings(MOBILE_DEFAULT_SETTINGS);
+    }
+  }, [isMobile, prefersReducedMotion]);
+
+  // Load updateHash from localStorage and check rate limit on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      setUpdateHash(stored);
+    }
+
+    // Check current rate limit status from server
+    const checkRateLimit = async () => {
+      try {
+        const res = await fetch("/api/rate-limit");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.remainingSeconds > 0) {
+            setRateLimitSeconds(data.remainingSeconds);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking rate limit:", error);
+      }
+    };
+    checkRateLimit();
+  }, []);
+
+  // Countdown timer for rate limit
+  useEffect(() => {
+    if (rateLimitSeconds > 0) {
+      rateLimitTimerRef.current = setInterval(() => {
+        setRateLimitSeconds((prev) => {
+          if (prev <= 1) {
+            if (rateLimitTimerRef.current) {
+              clearInterval(rateLimitTimerRef.current);
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => {
+        if (rateLimitTimerRef.current) {
+          clearInterval(rateLimitTimerRef.current);
+        }
+      };
+    }
+  }, [rateLimitSeconds]);
+
+  // Track user activity (mouse and touch)
+  useEffect(() => {
+    const timeout = isMobile ? MOBILE_IDLE_TIMEOUT : IDLE_TIMEOUT;
+
+    const handleActivity = () => {
+      setUiVisible(true);
+
+      // Clear existing timer
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+
+      // Start new timer
+      idleTimerRef.current = setTimeout(() => {
+        setUiVisible(false);
+      }, timeout);
+    };
+
+    // Start initial timer
+    idleTimerRef.current = setTimeout(() => {
+      setUiVisible(false);
+    }, timeout);
+
+    // Mouse events (passive for better scroll performance)
+    window.addEventListener("mousemove", handleActivity, { passive: true });
+    window.addEventListener("mousedown", handleActivity, { passive: true });
+    // Touch events for mobile (passive for better scroll performance)
+    window.addEventListener("touchstart", handleActivity, { passive: true });
+    window.addEventListener("touchmove", handleActivity, { passive: true });
+
+    return () => {
+      window.removeEventListener("mousemove", handleActivity);
+      window.removeEventListener("mousedown", handleActivity);
+      window.removeEventListener("touchstart", handleActivity);
+      window.removeEventListener("touchmove", handleActivity);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, [isMobile]);
+
+  // Fetch feelings from server with ETag support
+  const fetchFeelings = useCallback(async () => {
+    try {
+      const headers: HeadersInit = {};
+      if (etagRef.current) {
+        headers["If-None-Match"] = etagRef.current;
+      }
+
+      const res = await fetch("/api/feelings", { headers });
+
+      // 304 Not Modified - data hasn't changed
+      if (res.status === 304) {
+        return;
+      }
+
+      if (res.ok) {
+        // Store ETag for next request
+        const newEtag = res.headers.get("ETag");
+        if (newEtag) {
+          etagRef.current = newEtag;
+        }
+
+        const data = await res.json();
+        setFeelings(data.feelings);
+      }
+    } catch (error) {
+      console.error("Error fetching feelings:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Poll for new feelings with visibility-aware interval
+  useEffect(() => {
+    fetchFeelings();
+
+    const startPolling = (interval: number) => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      pollIntervalRef.current = setInterval(fetchFeelings, interval);
+    };
+
+    // Start with active interval
+    startPolling(POLL_INTERVAL);
+
+    // Adjust polling based on tab visibility
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        startPolling(POLL_INTERVAL_HIDDEN);
+      } else {
+        // Tab became visible - fetch immediately and resume normal polling
+        fetchFeelings();
+        startPolling(POLL_INTERVAL);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchFeelings]);
+
+  // Handle emotion selection
+  const handleEmotionSelect = async (emotion: Emotion) => {
+    setIsSubmitting(true);
+    try {
+      // If user has an existing feeling, update it; otherwise create new
+      const isUpdate = updateHash !== null;
+      const res = await fetch("/api/feelings", {
+        method: isUpdate ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isUpdate
+            ? { updateHash, emotionId: emotion.id }
+            : { emotionId: emotion.id }
+        ),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (isUpdate) {
+          // Replace the updated feeling in the list
+          setFeelings((prev) =>
+            prev.map((f) =>
+              f.id === data.feeling.id ? data.feeling : f
+            )
+          );
+        } else {
+          // New feeling - save the updateHash and add to list
+          const newHash = data.feeling.updateHash;
+          if (newHash) {
+            localStorage.setItem(STORAGE_KEY, newHash);
+            setUpdateHash(newHash);
+          }
+          setFeelings((prev) => [...prev, data.feeling]);
+        }
+      } else if (res.status === 429) {
+        const data = await res.json();
+        setRateLimitSeconds(data.remainingSeconds || 0);
+      }
+    } catch (error) {
+      console.error("Error saving feeling:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <main className="relative w-full h-screen overflow-hidden bg-[#0a0a12]">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-white/30 text-sm font-light animate-pulse">...</p>
         </div>
       </main>
-    </div>
+    );
+  }
+
+  return (
+    <main className="relative w-full h-screen overflow-hidden bg-[#0a0a12]">
+      <P5Canvas feelings={feelings} settings={performanceSettings} isMobile={isMobile} reducedMotion={prefersReducedMotion} />
+      <AmbientInfo feelingsCount={feelings.length} visible={uiVisible} />
+      <Settings
+        settings={performanceSettings}
+        onSettingsChange={setPerformanceSettings}
+        feelingsCount={feelings.length}
+        visible={uiVisible}
+      />
+      <EmotionPicker
+        onSelect={handleEmotionSelect}
+        disabled={isSubmitting}
+        visible={uiVisible}
+        rateLimitSeconds={rateLimitSeconds}
+      />
+    </main>
   );
 }

@@ -18,19 +18,19 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "ourfeelings.art — a river of feelings",
-  description: "Draw how you feel. Watch the world's emotions flow by.",
+  description: "Watch the world's emotions flow by.",
   keywords: ["feelings", "emotions", "art", "interactive", "ambient", "meditation"],
   authors: [{ name: "ourfeelings.art" }],
   openGraph: {
     title: "ourfeelings.art — a river of feelings",
-    description: "Draw how you feel. Watch the world's emotions flow by.",
+    description: "Watch the world's emotions flow by.",
     type: "website",
     url: "https://ourfeelings.art",
   },
   twitter: {
     card: "summary_large_image",
     title: "ourfeelings.art — a river of feelings",
-    description: "Draw how you feel. Watch the world's emotions flow by.",
+    description: "Watch the world's emotions flow by.",
   },
 };
 

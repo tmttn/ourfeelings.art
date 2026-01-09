@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ourfeelings.art
 
-## Getting Started
+A living river of human emotion. Watch colorful ribbons drift across your screen — each one a feeling shared by someone, somewhere in the world.
 
-First, run the development server:
+**[View Live →](https://ourfeelings.art)**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+![A river of feelings flowing across a dark canvas](public/screenshot.png)
+
+## How It Works
+
+1. **Choose a feeling** — Select from emotions like calm, love, hope, or melancholy
+2. **Watch it flow** — Your feeling becomes a glowing ribbon, joining hundreds of others in the river
+3. **See the world's mood** — Ribbons from people around the globe drift past, fading after 7 days
+
+The river is always moving, always changing — a collective artwork created by strangers.
+
+## Built With
+
+- **Next.js 16** — React framework with App Router
+- **Vercel KV** — Redis-based storage for feelings
+- **WebGL2** — Hardware-accelerated ribbon rendering with glow effects
+- **Framer Motion** — Smooth UI animations
+- **Tailwind CSS 4** — Styling
+
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Browser   │────▶│  Next.js    │────▶│  Vercel KV  │
+│   WebGL2    │◀────│  API Routes │◀────│   (Redis)   │
+└─────────────┘     └─────────────┘     └─────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Feelings are stored with a 7-day TTL. Returning visitors can update their feeling after a cooldown period, keeping the river fresh and personal.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# Install dependencies
+npm install
 
-## Learn More
+# Set up environment variables
+cp .env.example .env.local
+# Add your Vercel KV credentials to .env.local
 
-To learn more about Next.js, take a look at the following resources:
+# Run development server
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Open [http://localhost:3000](http://localhost:3000) to see the river.

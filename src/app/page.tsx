@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import P5Canvas from "@/components/P5Canvas";
 import AmbientInfo from "@/components/AmbientInfo";
 import EmotionPicker from "@/components/EmotionPicker";
@@ -8,6 +9,12 @@ import Settings, { DEFAULT_SETTINGS, MOBILE_DEFAULT_SETTINGS, type PerformanceSe
 import { useIsMobile, usePrefersReducedMotion } from "@/lib/useIsMobile";
 import type { Feeling } from "@/types";
 import type { Emotion } from "@/lib/emotions";
+
+// Dynamically import WebGL renderer (only loaded when needed)
+const WebGLRibbonRenderer = dynamic(() => import("@/components/WebGLRibbonRenderer"), {
+  ssr: false,
+  loading: () => null,
+});
 
 const POLL_INTERVAL = 15000; // 15 seconds when active
 const POLL_INTERVAL_HIDDEN = 60000; // 60 seconds when tab is hidden
@@ -21,7 +28,20 @@ const REDUCED_MOTION_SETTINGS: PerformanceSettings = {
   catmullRomSegments: 2,
   enableGlow: false,
   targetParticles: 0, // No ambient particles
+  renderer: "auto",
 };
+
+// Check if WebGL2 is supported
+function checkWebGL2Support(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2");
+    return gl !== null;
+  } catch {
+    return false;
+  }
+}
 
 export default function Home() {
   const isMobile = useIsMobile();
@@ -33,11 +53,27 @@ export default function Home() {
   const [updateHash, setUpdateHash] = useState<string | null>(null);
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
   const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rateLimitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasSetMobileDefaults = useRef(false);
   const etagRef = useRef<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check WebGL2 support on mount
+  useEffect(() => {
+    setWebglSupported(checkWebGL2Support());
+  }, []);
+
+  // Determine which renderer to use
+  const useWebGL = (() => {
+    if (webglSupported === null) return false; // Still checking
+    if (performanceSettings.renderer === "canvas") return false;
+    if (performanceSettings.renderer === "webgl") return webglSupported;
+    // "auto" mode - use WebGL if supported
+    return webglSupported;
+  })();
 
   // Apply mobile/reduced-motion defaults when detected
   useEffect(() => {
@@ -110,16 +146,20 @@ export default function Home() {
         clearTimeout(idleTimerRef.current);
       }
 
-      // Start new timer
+      // Start new timer (only if settings is not open)
+      if (!settingsOpen) {
+        idleTimerRef.current = setTimeout(() => {
+          setUiVisible(false);
+        }, timeout);
+      }
+    };
+
+    // Start initial timer (only if settings is not open)
+    if (!settingsOpen) {
       idleTimerRef.current = setTimeout(() => {
         setUiVisible(false);
       }, timeout);
-    };
-
-    // Start initial timer
-    idleTimerRef.current = setTimeout(() => {
-      setUiVisible(false);
-    }, timeout);
+    }
 
     // Mouse events (passive for better scroll performance)
     window.addEventListener("mousemove", handleActivity, { passive: true });
@@ -137,7 +177,7 @@ export default function Home() {
         clearTimeout(idleTimerRef.current);
       }
     };
-  }, [isMobile]);
+  }, [isMobile, settingsOpen]);
 
   // Fetch feelings from server with ETag support
   const fetchFeelings = useCallback(async () => {
@@ -263,13 +303,28 @@ export default function Home() {
 
   return (
     <main className="relative w-full h-screen overflow-hidden bg-[#0a0a12]">
-      <P5Canvas feelings={feelings} settings={performanceSettings} isMobile={isMobile} reducedMotion={prefersReducedMotion} />
+      {useWebGL ? (
+        <WebGLRibbonRenderer
+          feelings={feelings}
+          maxVisibleRibbons={performanceSettings.maxVisibleRibbons}
+          isMobile={isMobile}
+          reducedMotion={prefersReducedMotion}
+        />
+      ) : (
+        <P5Canvas
+          feelings={feelings}
+          settings={performanceSettings}
+          isMobile={isMobile}
+          reducedMotion={prefersReducedMotion}
+        />
+      )}
       <AmbientInfo feelingsCount={feelings.length} visible={uiVisible} />
       <Settings
         settings={performanceSettings}
         onSettingsChange={setPerformanceSettings}
         feelingsCount={feelings.length}
-        visible={uiVisible}
+        visible={uiVisible || settingsOpen}
+        onOpenChange={setSettingsOpen}
       />
       <EmotionPicker
         onSelect={handleEmotionSelect}

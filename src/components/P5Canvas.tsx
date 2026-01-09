@@ -18,6 +18,7 @@ const DEFAULT_PERF_SETTINGS: PerformanceSettings = {
   catmullRomSegments: 3,
   enableGlow: false,
   targetParticles: 15,
+  renderer: "canvas", // P5Canvas is always 2D canvas mode
 };
 
 // Flow animation constants
@@ -134,11 +135,18 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
       ];
 
       p.setup = () => {
+        // Use 2D canvas with GPU-optimized settings
         const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
         canvas.style("display", "block");
         p.colorMode(p.RGB, 255, 255, 255, 1);
         p.noiseDetail(isMobileRef.current ? 2 : 4, 0.5); // Reduced noise detail on mobile
         p.noiseSeed(42);
+
+        // Get 2D context and enable GPU acceleration hints
+        const ctx = (p as unknown as { drawingContext: CanvasRenderingContext2D }).drawingContext;
+        // Hint to browser for GPU acceleration
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
 
         // Limit frame rate based on device/preferences
         const targetFrameRate = reducedMotionRef.current
@@ -330,7 +338,11 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
       const offscreenCanvas = document.createElement("canvas");
       offscreenCanvas.width = 2048;
       offscreenCanvas.height = 512;
-      const offscreenCtx = offscreenCanvas.getContext("2d")!;
+      // Hint to browser that we won't read pixels back - enables GPU optimization
+      const offscreenCtx = offscreenCanvas.getContext("2d", {
+        willReadFrequently: false,
+        alpha: true,
+      })!;
 
       // Cached background gradient (only recreate on resize)
       let cachedBgGradient: CanvasGradient | null = null;
@@ -512,11 +524,10 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
         offscreenCtx.globalCompositeOperation = "source-over";
 
         // Draw offscreen canvas to main canvas with alpha
-        dc.save();
+        // Avoid save/restore - just set and reset globalAlpha (faster GPU state change)
         dc.globalAlpha = alpha;
         dc.drawImage(offscreenCanvas, 0, 0, boxWidth, boxHeight, minX, minY, boxWidth, boxHeight);
         dc.globalAlpha = 1;
-        dc.restore();
 
         // Spawn ribbon particles along the path (rate based on vitality)
         if (Math.random() < particleSpawnRate) {
@@ -653,55 +664,65 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           particle.y = p.constrain(particle.y, 0, p.height);
         }
 
-        // Second pass: batch render particles by layer (outer glow -> core -> highlight)
-        // This reduces context state changes significantly
+        // Second pass: batch render particles - GPU optimized
+        // Group by color to minimize fillStyle changes (expensive GPU state change)
         if (particles.length > 0) {
-          // Layer 1: Outer glow (largest, most transparent)
-          for (const particle of particles) {
+          // Pre-calculate particle data once
+          const particleData = particles.map(particle => {
             const lifeRatio = particle.life / particle.maxLife;
-            let particleAlpha = lifeRatio > 0.9 ? (1 - lifeRatio) / 0.1 : lifeRatio < 0.1 ? lifeRatio / 0.1 : 1;
-            particleAlpha *= 0.5;
+            let alpha = lifeRatio > 0.9 ? (1 - lifeRatio) / 0.1 : lifeRatio < 0.1 ? lifeRatio / 0.1 : 1;
+            alpha *= 0.5;
             const col = particle.color;
-            ctx.fillStyle = `rgba(${p.red(col)}, ${p.green(col)}, ${p.blue(col)}, ${particleAlpha * 0.1})`;
+            return {
+              x: particle.x,
+              y: particle.y,
+              size: particle.size,
+              alpha,
+              r: p.red(col),
+              g: p.green(col),
+              b: p.blue(col)
+            };
+          });
+
+          // Layer 1: Outer glow - batch all circles into single path per alpha bucket
+          ctx.globalAlpha = 0.1;
+          for (const pd of particleData) {
+            ctx.fillStyle = `rgb(${pd.r}, ${pd.g}, ${pd.b})`;
+            ctx.globalAlpha = pd.alpha * 0.1;
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size * 3, 0, TWO_PI);
+            ctx.arc(pd.x, pd.y, pd.size * 3, 0, TWO_PI);
             ctx.fill();
           }
 
           // Layer 2: Mid glow
-          for (const particle of particles) {
-            const lifeRatio = particle.life / particle.maxLife;
-            let particleAlpha = lifeRatio > 0.9 ? (1 - lifeRatio) / 0.1 : lifeRatio < 0.1 ? lifeRatio / 0.1 : 1;
-            particleAlpha *= 0.5;
-            const col = particle.color;
-            ctx.fillStyle = `rgba(${p.red(col)}, ${p.green(col)}, ${p.blue(col)}, ${particleAlpha * 0.25})`;
+          for (const pd of particleData) {
+            ctx.fillStyle = `rgb(${pd.r}, ${pd.g}, ${pd.b})`;
+            ctx.globalAlpha = pd.alpha * 0.25;
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size * 1.5, 0, TWO_PI);
+            ctx.arc(pd.x, pd.y, pd.size * 1.5, 0, TWO_PI);
             ctx.fill();
           }
 
           // Layer 3: Core
-          for (const particle of particles) {
-            const lifeRatio = particle.life / particle.maxLife;
-            let particleAlpha = lifeRatio > 0.9 ? (1 - lifeRatio) / 0.1 : lifeRatio < 0.1 ? lifeRatio / 0.1 : 1;
-            particleAlpha *= 0.5;
-            const col = particle.color;
-            ctx.fillStyle = `rgba(${p.red(col)}, ${p.green(col)}, ${p.blue(col)}, ${particleAlpha * 0.7})`;
+          for (const pd of particleData) {
+            ctx.fillStyle = `rgb(${pd.r}, ${pd.g}, ${pd.b})`;
+            ctx.globalAlpha = pd.alpha * 0.7;
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size * 0.5, 0, TWO_PI);
+            ctx.arc(pd.x, pd.y, pd.size * 0.5, 0, TWO_PI);
             ctx.fill();
           }
 
-          // Layer 4: White highlight (all same color, can batch better)
-          for (const particle of particles) {
-            const lifeRatio = particle.life / particle.maxLife;
-            let particleAlpha = lifeRatio > 0.9 ? (1 - lifeRatio) / 0.1 : lifeRatio < 0.1 ? lifeRatio / 0.1 : 1;
-            particleAlpha *= 0.5;
-            ctx.fillStyle = `rgba(255, 255, 255, ${particleAlpha * 0.4})`;
+          // Layer 4: White highlight - single color, most batchable
+          ctx.fillStyle = "rgb(255, 255, 255)";
+          for (const pd of particleData) {
+            ctx.globalAlpha = pd.alpha * 0.4;
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size * 0.2, 0, TWO_PI);
+            ctx.arc(pd.x, pd.y, pd.size * 0.2, 0, TWO_PI);
             ctx.fill();
           }
+
+          // Reset globalAlpha
+          ctx.globalAlpha = 1;
         }
 
         // Maintain particles
@@ -728,13 +749,12 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           const age = now - feeling.createdAt - staggerDelay;
           if (age < 0) continue; // Not yet time to show this ribbon
 
-          const feelingPhase = feeling.createdAt * 0.001;
-
           // Generate consistent variation based on feeling ID
           const hash = hashString(feeling.id);
-          const ribbonLength = seededRandom(hash, 0.5, 1.2); // 50% to 120% screen width
+          const baseRibbonLength = seededRandom(hash, 0.5, 1.2); // Base: 50% to 120% screen width
           const baseThickness = seededRandom(hash + 1, 18, 40); // Base stroke weight
           const baseGlowStrength = seededRandom(hash + 2, 0.6, 1.4); // Glow intensity
+          const baseSpeedVariation = seededRandom(hash + 3, 0.85, 1.15); // Per-ribbon speed variation
 
           // Calculate age-based degradation (7 day lifespan)
           const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -757,6 +777,10 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           // Skip if completely faded
           if (alpha < 0.01) continue;
 
+          // Ribbon length scales with vitality: new = longer, old = shorter
+          // Range: 40% of base (old) to 100% of base (new)
+          const ribbonLength = baseRibbonLength * (0.4 + vitality * 0.6);
+
           // Thickness and glow also degrade with age
           const thickness = baseThickness * (0.4 + vitality * 0.6); // 40%-100% of base
           const glowStrength = baseGlowStrength * (0.3 + vitality * 0.7); // 30%-100% of base
@@ -764,8 +788,9 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           // Particle spawn rate based on vitality (young = more particles)
           const particleSpawnRate = 0.05 + vitality * 0.15; // 5%-20% spawn chance
 
-          // Each ribbon has slightly different speed for parallax effect
-          const speedVariation = 0.85 + (feelingPhase % 1) * 0.3;
+          // Speed scales with vitality: new = faster, old = slower
+          // Range: 50% of base (old) to 120% of base (new)
+          const speedVariation = baseSpeedVariation * (0.5 + vitality * 0.7);
 
           // How far the HEAD of the ribbon has traveled (in screen widths)
           const headTravel = age * FLOW_SPEED * speedVariation;

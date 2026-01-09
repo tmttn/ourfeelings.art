@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/lib/useIsMobile";
 
+export type RendererMode = "auto" | "webgl" | "canvas";
+
 export interface PerformanceSettings {
   maxVisibleRibbons: number; // Infinity means unlimited (show all)
   catmullRomSegments: number;
   enableGlow: boolean;
   targetParticles: number;
+  renderer: RendererMode; // "auto" = WebGL if supported, "webgl" = force WebGL, "canvas" = force 2D canvas
 }
 
 // Slider steps for ribbons: 10, 20, 50, 100, 200, 500, 1000, 2000, Infinity
@@ -30,98 +33,107 @@ function formatRibbonValue(value: number): string {
 }
 
 // Calculate optimal settings based on feelings count and device type
-// These are more aggressive to ensure smooth 60fps on most hardware
+// With WebGL instancing, we can handle much higher counts
 export function getAdaptiveSettings(feelingsCount: number, isMobile: boolean = false): PerformanceSettings {
   if (isMobile) {
-    // Mobile: very aggressive optimization for battery and heat
-    if (feelingsCount <= 10) {
+    // Mobile: WebGL allows higher ribbon counts than 2D canvas
+    if (feelingsCount <= 50) {
       return {
-        maxVisibleRibbons: 10,
+        maxVisibleRibbons: 50,
         catmullRomSegments: 2,
         enableGlow: false,
         targetParticles: 10,
-      };
-    } else if (feelingsCount <= 50) {
-      return {
-        maxVisibleRibbons: 15,
-        catmullRomSegments: 2,
-        enableGlow: false,
-        targetParticles: 5,
+        renderer: "auto",
       };
     } else if (feelingsCount <= 200) {
       return {
-        maxVisibleRibbons: 20,
+        maxVisibleRibbons: 100,
+        catmullRomSegments: 2,
+        enableGlow: false,
+        targetParticles: 5,
+        renderer: "auto",
+      };
+    } else if (feelingsCount <= 500) {
+      return {
+        maxVisibleRibbons: 150,
         catmullRomSegments: 2,
         enableGlow: false,
         targetParticles: 3,
+        renderer: "auto",
       };
     } else {
-      // 200+ feelings on mobile - minimal for usability
+      // 500+ feelings on mobile
       return {
-        maxVisibleRibbons: 15,
+        maxVisibleRibbons: 200,
         catmullRomSegments: 2,
         enableGlow: false,
         targetParticles: 0,
+        renderer: "auto",
       };
     }
   }
 
-  // Desktop settings - balanced for visual quality vs performance
-  if (feelingsCount <= 20) {
+  // Desktop settings - WebGL instancing allows thousands of ribbons
+  if (feelingsCount <= 100) {
     return {
-      maxVisibleRibbons: 20,
+      maxVisibleRibbons: 100,
       catmullRomSegments: 4,
-      enableGlow: false, // Glow is expensive, disabled by default
+      enableGlow: false,
       targetParticles: 25,
+      renderer: "auto",
     };
-  } else if (feelingsCount <= 100) {
+  } else if (feelingsCount <= 500) {
     return {
-      maxVisibleRibbons: 40,
+      maxVisibleRibbons: 500,
       catmullRomSegments: 3,
       enableGlow: false,
       targetParticles: 20,
-    };
-  } else if (feelingsCount <= 300) {
-    // This is the ~340 feelings range from the feedback
-    return {
-      maxVisibleRibbons: 35,
-      catmullRomSegments: 3,
-      enableGlow: false,
-      targetParticles: 15,
+      renderer: "auto",
     };
   } else if (feelingsCount <= 1000) {
     return {
-      maxVisibleRibbons: 30,
+      maxVisibleRibbons: 1000,
+      catmullRomSegments: 3,
+      enableGlow: false,
+      targetParticles: 15,
+      renderer: "auto",
+    };
+  } else if (feelingsCount <= 2000) {
+    return {
+      maxVisibleRibbons: 1500,
       catmullRomSegments: 2,
       enableGlow: false,
       targetParticles: 10,
+      renderer: "auto",
     };
   } else {
-    // 1000+ feelings - prioritize usability over seeing all ribbons
+    // 2000+ feelings - still performant with WebGL
     return {
-      maxVisibleRibbons: 25,
+      maxVisibleRibbons: 2000,
       catmullRomSegments: 2,
       enableGlow: false,
       targetParticles: 5,
+      renderer: "auto",
     };
   }
 }
 
 // Mobile default settings (heavier optimization)
 export const MOBILE_DEFAULT_SETTINGS: PerformanceSettings = {
-  maxVisibleRibbons: 20,
+  maxVisibleRibbons: 100, // WebGL can handle more
   catmullRomSegments: 2,
   enableGlow: false,
   targetParticles: 5,
+  renderer: "auto",
 };
 
-// Desktop default - conservative to ensure good performance out of the box
-// Users can increase via settings if their hardware supports it
+// Desktop default - WebGL allows much higher ribbon counts
 export const DEFAULT_SETTINGS: PerformanceSettings = {
-  maxVisibleRibbons: 50,
+  maxVisibleRibbons: 500, // WebGL instancing can handle thousands
   catmullRomSegments: 3,
   enableGlow: false,
   targetParticles: 20,
+  renderer: "auto",
 };
 
 interface SettingsProps {
@@ -129,6 +141,7 @@ interface SettingsProps {
   onSettingsChange: (settings: PerformanceSettings) => void;
   feelingsCount: number;
   visible?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 export default function Settings({
@@ -136,9 +149,16 @@ export default function Settings({
   onSettingsChange,
   feelingsCount,
   visible = true,
+  onOpenChange,
 }: SettingsProps) {
   const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpenInternal] = useState(false);
+
+  // Wrapper to notify parent when open state changes
+  const setIsOpen = (open: boolean) => {
+    setIsOpenInternal(open);
+    onOpenChange?.(open);
+  };
   const [showHint, setShowHint] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -162,7 +182,7 @@ export default function Settings({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const handleChange = (key: keyof PerformanceSettings, value: number | boolean) => {
+  const handleChange = (key: keyof PerformanceSettings, value: number | boolean | RendererMode) => {
     const newSettings = { ...settings, [key]: value };
 
     // Auto-disable glow when ribbons >= 500
@@ -416,6 +436,36 @@ export default function Settings({
                     transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
                   />
                 </button>
+              </div>
+
+              {/* Renderer mode */}
+              <div className="space-y-3">
+                <span className="text-sm text-white/50 font-medium tracking-wide">Renderer</span>
+                <div className="flex gap-2">
+                  {(["auto", "webgl", "canvas"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => handleChange("renderer", mode)}
+                      className={`flex-1 py-1.5 text-xs font-medium tracking-wide rounded-lg transition-all duration-200 ${
+                        settings.renderer === mode
+                          ? "text-white/90 bg-white/15"
+                          : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                      }`}
+                      style={{
+                        border: settings.renderer === mode
+                          ? "1px solid rgba(255,255,255,0.2)"
+                          : "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      {mode === "auto" ? "Auto" : mode === "webgl" ? "WebGL" : "Canvas"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-white/25">
+                  {settings.renderer === "auto" && "Uses WebGL if supported, falls back to Canvas"}
+                  {settings.renderer === "webgl" && "GPU-accelerated, best for 1000+ ribbons"}
+                  {settings.renderer === "canvas" && "2D Canvas, lower ribbon limit but more effects"}
+                </p>
               </div>
 
               {/* Auto-optimize button */}

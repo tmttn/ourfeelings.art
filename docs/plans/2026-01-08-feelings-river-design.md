@@ -2,78 +2,83 @@
 
 ## Overview
 
-A full-screen canvas where soft ribbons of color drift slowly like a gentle river. Each ribbon represents someone's feeling, drawn from somewhere in the world. Small glowing particles emanate from the ribbons as they flow, creating a living, breathing artwork of collective human emotion.
+A full-screen canvas where soft ribbons of color drift slowly like a gentle river. Each ribbon represents someone's feeling, contributed from somewhere in the world. The ribbons flow continuously, creating a living, breathing artwork of collective human emotion.
 
 ## Core Experience
 
 ### The Canvas
-- Dark background (`#0a0a12`) with subtle radial gradient for depth
-- Ribbons flow from right to left over ~60 seconds, then fade out
+- Dark background with subtle radial gradient for depth
+- Ribbons flow from right to left, looping seamlessly
 - Pace is slow enough to feel peaceful, fast enough to always be changing
 
 ### Contributing a Feeling
-1. **Hold** anywhere on screen — a soft glow appears, cycling through a color spectrum
-2. **Release** when the color feels right — color locks in
-3. **Draw** your feeling as a gesture
-4. **Lift** to finish — your ribbon joins the river
+1. **Open the emotion picker** — Tap "how do you feel?" at the bottom
+2. **Choose an emotion** — Select from 6 options: joyful, calm, loving, hopeful, melancholic, anxious
+3. **Watch it flow** — Your feeling becomes a ribbon with characteristics matching the emotion
 
-### Ambient Information (subtle, 30% opacity)
-- Bottom left: "42 feelings flowing" (live count of visible traces)
-- Bottom right: "3:42am · night" (local time with period-of-day label)
+### Returning Visitors
+- Your feeling persists for 7 days
+- After a 1-hour cooldown, you can update your emotion
+- A cookie tracks your contribution locally
 
-### First Visit
-- Hint fades in after 2 seconds: "hold anywhere to begin"
-- Disappears after first interaction, never shows again (localStorage)
+### Ambient Information (subtle, low opacity)
+- Top left: "X feelings passing through" (live count of visible ribbons)
+- Top right: Local time with period-of-day label (e.g., "9:51pm / quiet contemplation")
 
-## Interaction Details
+## Emotions & Their Ribbons
 
-### Hold Phase
-- Soft circular glow (30px) appears at touch/cursor position
-- Color cycles through curated spectrum over ~3 seconds, loops
-- Subtle pulse animation indicates active state
-- Release locks the color with brief intensify effect
+Each emotion has unique visual characteristics:
 
-### Draw Phase
-- Smooth ribbon follows gesture in selected color
-- Glowing particles spawn along ribbon as it's drawn
-- Maximum draw time: 5 seconds (graceful fade if exceeded)
-- Minimum gesture length: 50px (prevents accidental taps)
+| Emotion | Color | Wave Style | Speed |
+|---------|-------|------------|-------|
+| Joyful | Golden yellow (#fbbf24) | Bouncy, energetic | Fast |
+| Calm | Soft blue (#60a5fa) | Gentle, smooth | Slow |
+| Loving | Soft pink (#f472b6) | Warm, flowing | Medium |
+| Hopeful | Lavender (#a78bfa) | Uplifting | Medium |
+| Melancholic | Deep indigo (#6366f1) | Slow, contemplative | Very slow |
+| Anxious | Warm orange (#f97316) | Jittery, erratic | Very fast |
 
-### Release
-- Ribbon joins the river flow with shimmer effect
-- Data sent to server
+Ribbon paths are generated server-side using multi-octave Perlin noise for organic, non-repetitive motion. Paths are periodic to enable seamless looping.
+
+## Vitality System
+
+Ribbons age over their 7-day lifespan. As they age, their **vitality** decreases, affecting multiple visual properties:
+
+```
+vitality = 1 - (age / 7_days)^0.7
+```
+
+The 0.7 exponent creates gradual initial degradation — ribbons stay vibrant longer before fading.
+
+### Properties Affected by Vitality
+
+| Property | New (vitality=1) | Old (vitality=0) |
+|----------|------------------|------------------|
+| Opacity/Alpha | 100% | 0% (fades out) |
+| Ribbon Length | 100% of base | 40% of base |
+| Thickness | 100% of base | 40% of base |
+| Glow Strength | 100% of base | 30% of base |
+| Flow Speed | 120% of base | 50% of base |
+| Particle Spawn Rate | 20% chance | 5% chance |
+
+### Fade-in Effect
+New ribbons fade in over 3 seconds to avoid jarring appearance.
+
+This creates a natural lifecycle: new feelings are bold, bright, and fast; as they age, they become subtle whispers before fading away entirely.
 
 ## Visual Rendering
 
-### Ribbons — Catmull-Rom Splines
-- Raw points captured every ~16ms
-- Interpolated with Catmull-Rom for smooth curves (4x point density)
-- Tapered stroke: thicker middle, thinner ends
-- Width varies with velocity (faster = thinner)
+### WebGL2 Ribbon Renderer
+- Hardware-accelerated rendering for smooth 60fps performance
+- Multi-layer glow effect for each ribbon
+- Catmull-Rom spline interpolation for smooth curves from sparse point data
+- Ribbons are rendered with tapered strokes (thicker middle, thinner ends)
 
-### Glow — Multi-layer
-1. Base layer: full opacity ribbon
-2. Inner glow: 150% wider, 30% opacity, lighter shade
-3. Outer glow: 300% wider, 10% opacity, blurred
-
-### Particles
-- Spawn rate: ~3/second per ribbon
-- Size: 2-5px circles with additive blend
-- Behavior: river flow + slight upward drift + random wobble
-- Lifespan: 2-4 seconds with linear opacity fade
-
-### Color Spectrum
-Curated emotional palette (slightly desaturated, gentle):
-```
-Soft pink → Warm coral → Golden amber →
-Soft green → Teal → Sky blue →
-Lavender → Soft purple → (loop)
-```
-
-### Typography
-- Font: System sans-serif, 11-12px, weight 300
-- Color: `rgba(255, 255, 255, 0.3)`
-- Tabular numbers for count
+### Performance Optimizations
+- Server sends only 32 points per ribbon; client interpolates to full smoothness
+- ETag-based caching to minimize API calls
+- WebGL2 for GPU-accelerated rendering
+- Efficient ribbon culling and batching
 
 ## Technical Architecture
 
@@ -81,48 +86,50 @@ Lavender → Soft purple → (loop)
 ```typescript
 interface Feeling {
   id: string;
-  color: string;           // hex color
-  path: [number, number][]; // normalized 0-1 coordinates
-  createdAt: number;        // timestamp
-  expiresAt: number;        // createdAt + 2 hours
+  emotionId: string;     // Which emotion was selected
+  color: string;         // Hex color
+  path: [number, number][]; // Normalized 0-1 coordinates (32 points)
+  createdAt: number;     // Timestamp
+  expiresAt: number;     // createdAt + 7 days
+  updateHash?: string;   // Secret hash for updates (only returned to creator)
 }
 ```
 
 ### API Endpoints
-- `GET /api/feelings` — Returns all active (non-expired) feelings
-- `POST /api/feelings` — Creates new feeling (rate limited)
+- `GET /api/feelings` — Returns all active feelings (with ETag caching)
+- `POST /api/feelings` — Creates or updates a feeling
 
 ### Rate Limiting
-- 1 feeling per IP per 30 seconds
-- Maximum 100 path points per feeling
+- 1 feeling per IP per hour
+- Returning visitors can update their existing feeling after cooldown
 
 ### Client Architecture
-- Canvas-based rendering (HTML5 Canvas)
-- Feelings fetched on load, polled every 10 seconds
-- Flow animation runs client-side (x-position decreases over time)
-- OffscreenCanvas for ribbon rendering (draw once, translate for flow)
-- Particle system pattern for efficient particle rendering
-
-### Performance Targets
-- 60fps with up to 200 ribbons and 1000 particles
-- Feelings persist for 2 hours in database
+- Next.js 16 with App Router
+- WebGL2-based ribbon rendering
+- Framer Motion for UI animations
+- Tailwind CSS 4 for styling
 
 ## File Structure
 ```
 src/
   app/
-    page.tsx           # Main canvas page
+    page.tsx              # Main canvas page
+    layout.tsx            # App layout with metadata
+    globals.css           # Global styles
     api/
       feelings/
-        route.ts       # GET and POST endpoints
+        route.ts          # GET and POST endpoints
   components/
-    Canvas.tsx         # Main rendering component
-    Hint.tsx           # First-visit hint
-    AmbientInfo.tsx    # Corner stats/time display
+    WebGLRibbonRenderer.tsx  # Main WebGL rendering
+    P5Canvas.tsx             # Alternative p5.js renderer
+    EmotionPicker.tsx        # Emotion selection UI
+    AmbientInfo.tsx          # Corner stats/time display
+    Settings.tsx             # Settings panel
   lib/
-    feelingsState.ts   # Shared state management
-    spline.ts          # Catmull-Rom interpolation
-    particles.ts       # Particle system
-    colors.ts          # Color spectrum utilities
-  types.ts             # TypeScript interfaces
+    feelingsState.ts      # Dev state management & TTL config
+    emotions.ts           # Emotion definitions & ribbon generation
+    spline.ts             # Catmull-Rom interpolation
+    colors.ts             # Color utilities
+    useIsMobile.ts        # Mobile detection hook
+  types.ts                # TypeScript interfaces
 ```

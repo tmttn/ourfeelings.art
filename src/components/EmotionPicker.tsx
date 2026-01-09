@@ -232,19 +232,23 @@ export default function EmotionPicker({
             className="relative"
             style={{ width: layout.width, height: layout.height }}
           >
-            {/* Backdrop for mobile to separate from ribbons */}
-            {isMobile && (
-              <div
-                className="absolute rounded-3xl"
-                style={{
-                  top: -50,
-                  left: -40,
-                  right: -40,
-                  bottom: -30,
-                  background: "linear-gradient(to top, rgba(10,10,18,0.9) 0%, rgba(10,10,18,0.8) 40%, rgba(10,10,18,0.5) 70%, rgba(10,10,18,0.2) 85%, rgba(10,10,18,0) 100%)",
-                }}
-              />
-            )}
+            {/* Backdrop to separate from ribbons */}
+            <div
+              className="absolute rounded-3xl"
+              style={isMobile ? {
+                top: -50,
+                left: -40,
+                right: -40,
+                bottom: -30,
+                background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.95) 40%, rgba(10,10,18,0.8) 70%, rgba(10,10,18,0.4) 85%, rgba(10,10,18,0) 100%)",
+              } : {
+                top: -30,
+                left: -60,
+                right: -60,
+                bottom: -40,
+                background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.9) 30%, rgba(10,10,18,0.7) 60%, rgba(10,10,18,0.35) 80%, rgba(10,10,18,0) 100%)",
+              }}
+            />
             {/* Label - centered below the dots (desktop only, mobile shows labels under each dot) */}
             {!isMobile && (
               <motion.div

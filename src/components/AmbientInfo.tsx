@@ -307,6 +307,17 @@ export default function AmbientInfo({ feelingsCount, visible = true }: AmbientIn
   // Desktop: full layout with feelings count (bottom-left) and time/mood (bottom-right)
   return (
     <>
+      {/* Backdrop to separate from ribbons */}
+      <motion.div
+        className="fixed bottom-0 left-0 right-0 pointer-events-none"
+        style={{
+          height: 120,
+          background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.85) 40%, rgba(10,10,18,0.5) 70%, rgba(10,10,18,0) 100%)",
+        }}
+        animate={{ opacity: visible ? 1 : 0 }}
+        transition={{ duration: 0.8 }}
+      />
+
       {/* Feelings count - bottom left */}
       <motion.div
         className="fixed bottom-10 left-10 pointer-events-none select-none"

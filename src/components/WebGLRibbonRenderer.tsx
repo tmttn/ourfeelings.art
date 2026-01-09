@@ -105,6 +105,9 @@ void main() {
   // Interpolate Y using Catmull-Rom
   float pathY_interp = catmullRom(y0, y1, y2, y3, segmentT);
 
+  // Calculate aspect ratio for tangent calculations (used later)
+  float aspectRatio = u_resolution.x / u_resolution.y;
+
   // Calculate smoothed tangent using finite differences in GLOBAL parameter space
   // This smooths across segment boundaries where the miter spikes occur
   // Sample Y values at positions slightly before and after current position
@@ -152,7 +155,8 @@ void main() {
 
   // Tangent direction: dx/dt = -ribbonLength (ribbon flows right to left), dy/dt from derivative
   // Note: dx is negative because screenX decreases as t increases
-  float dx = -a_ribbonLength;
+  // IMPORTANT: Scale by aspect ratio so ribbons look consistent across screen orientations
+  float dx = -a_ribbonLength * aspectRatio; // Scale X by aspect ratio (aspectRatio defined above)
   float dy = dydt;
   float tangentLen = sqrt(dx * dx + dy * dy);
 
@@ -622,6 +626,13 @@ export default function WebGLRibbonRenderer({
       const time = Date.now();
 
       gl.viewport(0, 0, canvas.width, canvas.height);
+
+      // Calculate aspect ratio correction for mobile screens (inside render loop for orientation changes)
+      // On narrow (portrait) screens, ribbons need to be longer to maintain visual proportions
+      const aspectRatio = canvas.width / canvas.height;
+      const ribbonLengthMultiplier = aspectRatio < 1
+        ? Math.min(1.8, Math.sqrt(1 / aspectRatio)) // Cap at 1.8x to prevent excessive length
+        : 1;
       gl.clearColor(0.04, 0.04, 0.07, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -660,7 +671,7 @@ export default function WebGLRibbonRenderer({
 
         if (alpha < 0.01) continue;
 
-        const ribbonLength = baseRibbonLength * (0.4 + vitality * 0.6);
+        const ribbonLength = baseRibbonLength * (0.4 + vitality * 0.6) * ribbonLengthMultiplier;
         const thickness = baseThickness * (0.4 + vitality * 0.6);
         const speedVariation = baseSpeedVariation * (0.5 + vitality * 0.7);
 

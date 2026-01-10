@@ -291,6 +291,10 @@ export default function Home() {
           }
           setFeelings((prev) => [...prev, data.feeling]);
         }
+        // Set rate limit countdown from successful response
+        if (data.remainingSeconds) {
+          setRateLimitSeconds(data.remainingSeconds);
+        }
       } else if (res.status === 429) {
         const data = await res.json();
         setRateLimitSeconds(data.remainingSeconds || 0);

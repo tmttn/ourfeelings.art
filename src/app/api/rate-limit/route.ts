@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { checkDevRateLimit } from "@/lib/feelingsState";
+import { checkDevRateLimit, getClientIP } from "@/lib/feelingsState";
 
 const RATE_LIMIT_PREFIX = "twinkli:rate:";
 const RATE_LIMIT_SECONDS = 60 * 60; // 1 hour
@@ -15,8 +15,7 @@ const hasKV = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 export async function GET(request: NextRequest) {
   try {
     // Get client IP
-    const forwarded = request.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
+    const ip = getClientIP(request);
 
     let remainingSeconds = 0;
 

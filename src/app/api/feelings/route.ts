@@ -10,6 +10,7 @@ import {
   clearDevRateLimits,
   checkDevRateLimit,
   setDevRateLimit,
+  getClientIP,
   FEELINGS_TTL,
 } from "@/lib/feelingsState";
 import { EMOTIONS, generateRibbonPath, getRandomStartY } from "@/lib/emotions";
@@ -100,8 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get client IP for rate limiting
-    const forwarded = request.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
+    const ip = getClientIP(request);
 
     // Check rate limit
     if (isDev && !hasKV) {
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
       await kv.set(`${RATE_LIMIT_PREFIX}${ip}`, now, { ex: RATE_LIMIT_SECONDS });
     }
 
-    return NextResponse.json({ success: true, feeling });
+    return NextResponse.json({ success: true, feeling, remainingSeconds: RATE_LIMIT_SECONDS });
   } catch (error) {
     console.error("Error creating feeling:", error);
     return NextResponse.json(
@@ -192,8 +192,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Get client IP for rate limiting
-    const forwarded = request.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
+    const ip = getClientIP(request);
 
     // Check rate limit (same as POST)
     if (isDev && !hasKV) {
@@ -267,7 +266,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Feeling not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, feeling: updatedFeeling });
+    return NextResponse.json({ success: true, feeling: updatedFeeling, remainingSeconds: RATE_LIMIT_SECONDS });
   } catch (error) {
     console.error("Error updating feeling:", error);
     return NextResponse.json(

@@ -288,31 +288,43 @@ export default function AmbientInfo({ feelingsCount, visible = true }: AmbientIn
     return () => clearInterval(interval);
   }, [moodyMessage, feelingSuffix, time]);
 
-  // Mobile: single compact element in top-left
+  // Mobile: single compact element in top-left with bottom backdrop
   if (isMobile) {
     return (
-      <motion.div
-        className="fixed top-4 left-4 pointer-events-none select-none"
-        animate={{ opacity: visible ? 1 : 0 }}
-        transition={{ duration: 0.8 }}
-      >
-        <div className="text-white/40 text-sm tracking-wide font-light">
-          <span className="tabular-nums text-white/50">{feelingsCount}</span>
-          <span className="text-white/30"> feelings</span>
-        </div>
-      </motion.div>
+      <>
+        {/* Backdrop to separate bottom UI from ribbons (mobile) */}
+        <motion.div
+          className="fixed bottom-0 left-0 right-0 pointer-events-none"
+          style={{
+            height: 280,
+            background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.95) 35%, rgba(10,10,18,0.8) 60%, rgba(10,10,18,0.4) 80%, rgba(10,10,18,0) 100%)",
+          }}
+          animate={{ opacity: visible ? 1 : 0 }}
+          transition={{ duration: 0.8 }}
+        />
+        <motion.div
+          className="fixed top-4 left-4 pointer-events-none select-none"
+          animate={{ opacity: visible ? 1 : 0 }}
+          transition={{ duration: 0.8 }}
+        >
+          <div className="text-white/40 text-sm tracking-wide font-light">
+            <span className="tabular-nums text-white/50">{feelingsCount}</span>
+            <span className="text-white/30"> feelings</span>
+          </div>
+        </motion.div>
+      </>
     );
   }
 
   // Desktop: full layout with feelings count (bottom-left) and time/mood (bottom-right)
   return (
     <>
-      {/* Backdrop to separate from ribbons */}
+      {/* Backdrop to separate bottom UI from ribbons */}
       <motion.div
         className="fixed bottom-0 left-0 right-0 pointer-events-none"
         style={{
-          height: 120,
-          background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.85) 40%, rgba(10,10,18,0.5) 70%, rgba(10,10,18,0) 100%)",
+          height: 200,
+          background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.9) 30%, rgba(10,10,18,0.7) 55%, rgba(10,10,18,0.35) 75%, rgba(10,10,18,0) 100%)",
         }}
         animate={{ opacity: visible ? 1 : 0 }}
         transition={{ duration: 0.8 }}

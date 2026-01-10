@@ -60,6 +60,84 @@ const COUNTDOWN_MESSAGES = [
   "soon, in",
 ];
 
+// Words that map to emotion colors (includes synonyms)
+const EMOTION_WORDS: Record<string, string> = {
+  // Joy - golden yellow
+  joy: "joy", joyful: "joy", happy: "joy", happiness: "joy", golden: "joy", bright: "joy", light: "joy", radiant: "joy", sunny: "joy", brightens: "joy",
+  // Calm - soft blue
+  calm: "calm", peace: "calm", peaceful: "calm", serene: "calm", still: "calm", stillness: "calm", quiet: "calm", tranquil: "calm", blue: "calm", shores: "calm",
+  // Love - soft pink
+  love: "love", loving: "love", tender: "love", tenderness: "love", warm: "love", warmth: "love", gentle: "love", affection: "love", rose: "love", "rose-tinted": "love", warms: "love", softens: "love",
+  // Hope - lavender
+  hope: "hope", hopeful: "hope", dreams: "hope", dream: "hope", violet: "hope", wonder: "hope", wishing: "hope", longing: "hope", aspire: "hope", blooms: "hope",
+  // Melancholy - deep indigo
+  melancholy: "melancholy", sorrow: "melancholy", sadness: "melancholy", sad: "melancholy", wistful: "melancholy", indigo: "melancholy", deep: "melancholy",
+  // Anxious - warm orange
+  anxious: "anxious", worry: "anxious", restless: "anxious", uneasy: "anxious", nervous: "anxious", racing: "anxious", flutter: "anxious", orange: "anxious", chaos: "anxious", waves: "anxious",
+};
+
+// Poetic phrases grouped by emotion - we cycle through emotions before repeating
+const LEGEND_PHRASES_BY_EMOTION: Record<string, string[]> = {
+  joy: [
+    "joy is golden, fleeting, bright",
+    "sometimes joy arrives unannounced",
+    "joy hums beneath the surface",
+    "even small joys leave light behind",
+    "joy needs no reason",
+  ],
+  calm: [
+    "calm settles like dust after rain",
+    "in stillness, we find ourselves",
+    "peace is not the absence of noise",
+    "calm waters run deep",
+    "stillness speaks its own language",
+  ],
+  love: [
+    "love asks for nothing in return",
+    "we carry warmth we cannot name",
+    "tenderness is its own kind of strength",
+    "love lingers long after words fade",
+    "some warmth never leaves us",
+  ],
+  hope: [
+    "hope is a violet thread in the dark",
+    "we dream because we must",
+    "longing keeps us reaching forward",
+    "even now, something blooms",
+    "wonder lives in small moments",
+  ],
+  melancholy: [
+    "melancholy has its own beauty",
+    "sorrow too deserves a place here",
+    "some sadness is just love with nowhere to go",
+    "the deep places hold us too",
+    "even grief is a kind of holding on",
+  ],
+  anxious: [
+    "restless minds still belong",
+    "worry is just love turned inward",
+    "the anxious heart beats loudest",
+    "racing thoughts eventually slow",
+    "even chaos finds its rhythm",
+  ],
+};
+
+// Emotion order for cycling - ensures all 6 emotions shown before repeating
+const EMOTION_ORDER = ["joy", "calm", "love", "hope", "melancholy", "anxious"];
+
+// Get legend phrase - cycles through all emotions before repeating any
+// Changes every 8 seconds (faster than other messages)
+function getRandomLegendPhrase(): string {
+  const cycleTime = 8000; // 8 seconds per phrase
+  const now = Date.now();
+  const emotionIndex = Math.floor(now / cycleTime) % EMOTION_ORDER.length;
+  const emotionId = EMOTION_ORDER[emotionIndex];
+  const phrases = LEGEND_PHRASES_BY_EMOTION[emotionId];
+  // Pick a phrase within this emotion based on a longer cycle
+  const phraseIndex = Math.floor(now / (cycleTime * EMOTION_ORDER.length)) % phrases.length;
+  return phrases[phraseIndex];
+}
+
 // Get a consistent random message based on timestamp (changes every few minutes)
 function getRandomMessage(messages: string[], offsetMinutes: number = 0): string {
   const index = Math.floor((Date.now() + offsetMinutes * 60000) / 180000) % messages.length;
@@ -103,6 +181,7 @@ export default function EmotionPicker({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [rateLimitMessage, setRateLimitMessage] = useState(getRandomMessage(RATE_LIMIT_MESSAGES));
   const [countdownMessage, setCountdownMessage] = useState(getRandomMessage(COUNTDOWN_MESSAGES, 7));
+  const [legendPhrase, setLegendPhrase] = useState(getRandomLegendPhrase());
 
   // Clear confirmation when rate limit kicks in
   useEffect(() => {
@@ -119,13 +198,15 @@ export default function EmotionPicker({
     const interval = setInterval(() => {
       const newRateLimit = getRandomMessage(RATE_LIMIT_MESSAGES);
       const newCountdown = getRandomMessage(COUNTDOWN_MESSAGES, 7);
+      const newLegend = getRandomLegendPhrase();
 
       if (newRateLimit !== rateLimitMessage) setRateLimitMessage(newRateLimit);
       if (newCountdown !== countdownMessage) setCountdownMessage(newCountdown);
+      if (newLegend !== legendPhrase) setLegendPhrase(newLegend);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [rateLimitSeconds, rateLimitMessage, countdownMessage]);
+  }, [rateLimitSeconds, rateLimitMessage, countdownMessage, legendPhrase]);
 
   const handleSelect = (emotion: Emotion) => {
     setSelectedEmotion(emotion);
@@ -211,6 +292,35 @@ export default function EmotionPicker({
                 {isMobile ? "" : "\u00A0"}{formatTimeRemaining(rateLimitSeconds)}
               </span>
             </div>
+            {/* Color legend - poetic phrase with emotion words in their colors */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3, duration: 0.8 }}
+              className={`text-center ${isMobile ? "mt-4 px-4" : "mt-5"}`}
+            >
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={legendPhrase}
+                  className={`font-light italic tracking-wide ${isMobile ? "text-base" : "text-xl"}`}
+                  {...textTransition}
+                >
+                  {legendPhrase.split(/(\s+|,|—)/).map((word, index) => {
+                    const cleanWord = word.toLowerCase().trim();
+                    const emotionId = EMOTION_WORDS[cleanWord];
+                    const emotion = emotionId ? EMOTIONS.find(e => e.id === emotionId) : null;
+                    return (
+                      <span
+                        key={index}
+                        style={{ color: emotion ? `${emotion.color}cc` : 'rgba(255,255,255,0.5)' }}
+                      >
+                        {word}
+                      </span>
+                    );
+                  })}
+                </motion.p>
+              </AnimatePresence>
+            </motion.div>
           </motion.div>
         ) : showConfirmation && selectedEmotion ? (
           <motion.p
@@ -232,23 +342,6 @@ export default function EmotionPicker({
             className="relative"
             style={{ width: layout.width, height: layout.height }}
           >
-            {/* Backdrop to separate from ribbons */}
-            <div
-              className="absolute rounded-3xl"
-              style={isMobile ? {
-                top: -50,
-                left: -40,
-                right: -40,
-                bottom: -30,
-                background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.95) 40%, rgba(10,10,18,0.8) 70%, rgba(10,10,18,0.4) 85%, rgba(10,10,18,0) 100%)",
-              } : {
-                top: -30,
-                left: -60,
-                right: -60,
-                bottom: -40,
-                background: "linear-gradient(to top, rgba(10,10,18,0.98) 0%, rgba(10,10,18,0.9) 30%, rgba(10,10,18,0.7) 60%, rgba(10,10,18,0.35) 80%, rgba(10,10,18,0) 100%)",
-              }}
-            />
             {/* Label - centered below the dots (desktop only, mobile shows labels under each dot) */}
             {!isMobile && (
               <motion.div

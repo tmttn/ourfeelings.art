@@ -54,6 +54,7 @@ export default function Home() {
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
   const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [uiPinned, setUiPinned] = useState(false);
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rateLimitTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -136,6 +137,16 @@ export default function Home() {
 
   // Track user activity (mouse and touch)
   useEffect(() => {
+    // If UI is pinned, always show and don't set up idle timers
+    if (uiPinned) {
+      setUiVisible(true);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      return;
+    }
+
     const timeout = isMobile ? MOBILE_IDLE_TIMEOUT : IDLE_TIMEOUT;
 
     const handleActivity = () => {
@@ -177,7 +188,7 @@ export default function Home() {
         clearTimeout(idleTimerRef.current);
       }
     };
-  }, [isMobile, settingsOpen]);
+  }, [isMobile, settingsOpen, uiPinned]);
 
   // Fetch feelings from server with ETag support
   const fetchFeelings = useCallback(async () => {
@@ -318,18 +329,20 @@ export default function Home() {
           reducedMotion={prefersReducedMotion}
         />
       )}
-      <AmbientInfo feelingsCount={feelings.length} visible={uiVisible} />
+      <AmbientInfo feelingsCount={feelings.length} visible={uiVisible || uiPinned} />
       <Settings
         settings={performanceSettings}
         onSettingsChange={setPerformanceSettings}
         feelingsCount={feelings.length}
-        visible={uiVisible || settingsOpen}
+        visible={uiVisible || settingsOpen || uiPinned}
         onOpenChange={setSettingsOpen}
+        uiPinned={uiPinned}
+        onUiPinnedChange={setUiPinned}
       />
       <EmotionPicker
         onSelect={handleEmotionSelect}
         disabled={isSubmitting}
-        visible={uiVisible}
+        visible={uiVisible || uiPinned}
         rateLimitSeconds={rateLimitSeconds}
       />
     </main>

@@ -142,6 +142,8 @@ interface SettingsProps {
   feelingsCount: number;
   visible?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
+  uiPinned?: boolean;
+  onUiPinnedChange?: (pinned: boolean) => void;
 }
 
 export default function Settings({
@@ -150,6 +152,8 @@ export default function Settings({
   feelingsCount,
   visible = true,
   onOpenChange,
+  uiPinned = false,
+  onUiPinnedChange,
 }: SettingsProps) {
   const isMobile = useIsMobile();
   const [isOpen, setIsOpenInternal] = useState(false);
@@ -478,6 +482,45 @@ export default function Settings({
               >
                 Auto-optimize
               </button>
+
+              {/* Divider */}
+              <div
+                className="h-px mx-2 my-1"
+                style={{
+                  background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+                }}
+              />
+
+              {/* Pin UI toggle */}
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm text-white/50 font-medium tracking-wide">
+                  Pin UI
+                </span>
+                <button
+                  onClick={() => onUiPinnedChange?.(!uiPinned)}
+                  className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
+                    uiPinned
+                      ? "bg-white/25 shadow-[0_0_12px_rgba(255,255,255,0.2)]"
+                      : "bg-white/10"
+                  }`}
+                  style={{
+                    border: uiPinned
+                      ? "1px solid rgba(255,255,255,0.3)"
+                      : "1px solid rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <motion.span
+                    className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white/90"
+                    animate={{
+                      x: uiPinned ? 20 : 0,
+                      boxShadow: uiPinned
+                        ? "0 0 8px rgba(255,255,255,0.5)"
+                        : "none"
+                    }}
+                    transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                  />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

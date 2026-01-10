@@ -53,6 +53,7 @@ export default function Home() {
   const [uiVisible, setUiVisible] = useState(true);
   const [updateHash, setUpdateHash] = useState<string | null>(null);
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+  const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [uiPinned, setUiPinned] = useState(false);
@@ -108,6 +109,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error("Error checking rate limit:", error);
+      } finally {
+        setRateLimitChecked(true);
       }
     };
     checkRateLimit();
@@ -362,7 +365,7 @@ export default function Home() {
       <EmotionPicker
         onSelect={handleEmotionSelect}
         disabled={isSubmitting}
-        visible={uiVisible || uiPinned}
+        visible={(uiVisible || uiPinned) && rateLimitChecked}
         rateLimitSeconds={rateLimitSeconds}
       />
     </main>

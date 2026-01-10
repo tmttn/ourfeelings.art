@@ -627,12 +627,13 @@ export default function WebGLRibbonRenderer({
 
       gl.viewport(0, 0, canvas.width, canvas.height);
 
-      // Calculate aspect ratio correction for mobile screens (inside render loop for orientation changes)
-      // On narrow (portrait) screens, ribbons need to be longer to maintain visual proportions
+      // Calculate aspect ratio correction for consistent visual appearance across screen sizes
+      // Reference aspect ratio is 16:9 (landscape desktop) - ribbons should look similar regardless of screen shape
       const aspectRatio = canvas.width / canvas.height;
-      const ribbonLengthMultiplier = aspectRatio < 1
-        ? Math.min(1.8, Math.sqrt(1 / aspectRatio)) // Cap at 1.8x to prevent excessive length
-        : 1;
+      const REFERENCE_ASPECT = 16 / 9; // ~1.78
+      // Scale ribbon length to compensate for aspect ratio difference from reference
+      // On portrait (aspectRatio < 1), ribbons need to be much longer to maintain visual proportions
+      const ribbonLengthMultiplier = Math.min(3.0, REFERENCE_ASPECT / aspectRatio);
       gl.clearColor(0.04, 0.04, 0.07, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
 

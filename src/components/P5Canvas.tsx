@@ -736,6 +736,14 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           (a, b) => a.createdAt - b.createdAt
         );
 
+        // Calculate aspect ratio correction for consistent visual appearance across screen sizes
+        // Reference aspect ratio is 16:9 (landscape desktop) - ribbons should look similar regardless of screen shape
+        const aspectRatio = p.width / p.height;
+        const REFERENCE_ASPECT = 16 / 9; // ~1.78
+        // Scale ribbon length to compensate for aspect ratio difference from reference
+        // On portrait (aspectRatio < 1), ribbons need to be much longer to maintain visual proportions
+        const ribbonLengthMultiplier = Math.min(3.0, REFERENCE_ASPECT / aspectRatio);
+
         // Track how many ribbons we've rendered this frame
         let renderedCount = 0;
 
@@ -779,7 +787,8 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
 
           // Ribbon length scales with vitality: new = longer, old = shorter
           // Range: 40% of base (old) to 100% of base (new)
-          const ribbonLength = baseRibbonLength * (0.4 + vitality * 0.6);
+          // Apply aspect ratio multiplier for consistent appearance across screen orientations
+          const ribbonLength = baseRibbonLength * (0.4 + vitality * 0.6) * ribbonLengthMultiplier;
 
           // Thickness and glow also degrade with age
           const thickness = baseThickness * (0.4 + vitality * 0.6); // 40%-100% of base

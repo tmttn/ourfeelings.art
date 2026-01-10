@@ -20,6 +20,7 @@ const POLL_INTERVAL = 15000; // 15 seconds when active
 const POLL_INTERVAL_HIDDEN = 60000; // 60 seconds when tab is hidden
 const IDLE_TIMEOUT = 3000; // 3 seconds of no interaction
 const MOBILE_IDLE_TIMEOUT = 5000; // 5 seconds on mobile (longer since no hover)
+const POST_ACTION_TIMEOUT = 10000; // 10 seconds after submitting to read rate limit message
 const STORAGE_KEY = "river-of-feelings-hash";
 
 // Reduced motion settings - minimal animation for accessibility
@@ -134,6 +135,21 @@ export default function Home() {
       };
     }
   }, [rateLimitSeconds]);
+
+  // Keep UI visible longer when rate limit message appears (so user can read it)
+  useEffect(() => {
+    if (rateLimitSeconds > 0 && !uiPinned) {
+      // Clear any existing idle timer
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+      // Keep UI visible, then start longer timeout
+      setUiVisible(true);
+      idleTimerRef.current = setTimeout(() => {
+        setUiVisible(false);
+      }, POST_ACTION_TIMEOUT);
+    }
+  }, [rateLimitSeconds > 0, uiPinned]); // Only trigger when transitioning to rate limited state
 
   // Track user activity (mouse and touch)
   useEffect(() => {

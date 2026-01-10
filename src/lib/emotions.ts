@@ -13,7 +13,7 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "joy",
     label: "joyful",
-    color: "#fbbf24", // Warm golden yellow
+    color: "#facc15", // Bright yellow
     waveAmplitude: 0.07,
     waveFrequency: 2.5,
     flowSpeed: 1.2,
@@ -21,7 +21,7 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "calm",
     label: "calm",
-    color: "#60a5fa", // Soft blue
+    color: "#2dd4bf", // Teal
     waveAmplitude: 0.05,
     waveFrequency: 1.8,
     flowSpeed: 0.7,
@@ -29,7 +29,7 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "love",
     label: "loving",
-    color: "#f472b6", // Soft pink
+    color: "#f472b6", // Warm pink
     waveAmplitude: 0.06,
     waveFrequency: 2.2,
     flowSpeed: 0.9,
@@ -37,7 +37,7 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "hope",
     label: "hopeful",
-    color: "#a78bfa", // Lavender
+    color: "#38bdf8", // Sky blue
     waveAmplitude: 0.055,
     waveFrequency: 2.0,
     flowSpeed: 1.0,
@@ -45,7 +45,7 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "melancholy",
     label: "melancholic",
-    color: "#6366f1", // Deep indigo
+    color: "#8b5cf6", // Deep violet
     waveAmplitude: 0.045,
     waveFrequency: 1.6,
     flowSpeed: 0.5,
@@ -53,10 +53,26 @@ export const EMOTIONS: Emotion[] = [
   {
     id: "anxious",
     label: "anxious",
-    color: "#f97316", // Warm orange
+    color: "#fb923c", // Orange
     waveAmplitude: 0.08,
     waveFrequency: 2.8,
     flowSpeed: 1.5,
+  },
+  {
+    id: "angry",
+    label: "angry",
+    color: "#ef4444", // Red
+    waveAmplitude: 0.09,
+    waveFrequency: 3.2,
+    flowSpeed: 1.8,
+  },
+  {
+    id: "worn",
+    label: "worn",
+    color: "#94a3b8", // Muted sage
+    waveAmplitude: 0.035,
+    waveFrequency: 1.3,
+    flowSpeed: 0.4,
   },
 ];
 

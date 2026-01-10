@@ -62,18 +62,22 @@ const COUNTDOWN_MESSAGES = [
 
 // Words that map to emotion colors (includes synonyms)
 const EMOTION_WORDS: Record<string, string> = {
-  // Joy - golden yellow
+  // Joy - bright yellow
   joy: "joy", joyful: "joy", happy: "joy", happiness: "joy", golden: "joy", bright: "joy", light: "joy", radiant: "joy", sunny: "joy", brightens: "joy",
-  // Calm - soft blue
-  calm: "calm", peace: "calm", peaceful: "calm", serene: "calm", still: "calm", stillness: "calm", quiet: "calm", tranquil: "calm", blue: "calm", shores: "calm",
-  // Love - soft pink
+  // Calm - teal
+  calm: "calm", peace: "calm", peaceful: "calm", serene: "calm", still: "calm", stillness: "calm", quiet: "calm", tranquil: "calm", teal: "calm", shores: "calm",
+  // Love - warm pink
   love: "love", loving: "love", tender: "love", tenderness: "love", warm: "love", warmth: "love", gentle: "love", affection: "love", rose: "love", "rose-tinted": "love", warms: "love", softens: "love",
-  // Hope - lavender
-  hope: "hope", hopeful: "hope", dreams: "hope", dream: "hope", violet: "hope", wonder: "hope", wishing: "hope", longing: "hope", aspire: "hope", blooms: "hope",
-  // Melancholy - deep indigo
-  melancholy: "melancholy", sorrow: "melancholy", sadness: "melancholy", sad: "melancholy", wistful: "melancholy", indigo: "melancholy", deep: "melancholy",
-  // Anxious - warm orange
+  // Hope - sky blue
+  hope: "hope", hopeful: "hope", dreams: "hope", dream: "hope", sky: "hope", wonder: "hope", wishing: "hope", longing: "hope", aspire: "hope", blooms: "hope",
+  // Melancholy - deep violet
+  melancholy: "melancholy", sorrow: "melancholy", sadness: "melancholy", sad: "melancholy", wistful: "melancholy", violet: "melancholy", deep: "melancholy",
+  // Anxious - orange
   anxious: "anxious", worry: "anxious", restless: "anxious", uneasy: "anxious", nervous: "anxious", racing: "anxious", flutter: "anxious", orange: "anxious", chaos: "anxious", waves: "anxious",
+  // Angry - red
+  angry: "angry", anger: "angry", rage: "angry", furious: "angry", fire: "angry", burning: "angry", red: "angry", sharp: "angry", flame: "angry", blazing: "angry",
+  // Worn - muted sage
+  worn: "worn", weary: "worn", tired: "worn", exhausted: "worn", heavy: "worn", faded: "worn", gray: "worn", drained: "worn", spent: "worn", hollow: "worn",
 };
 
 // Poetic phrases grouped by emotion - we cycle through emotions before repeating
@@ -100,7 +104,7 @@ const LEGEND_PHRASES_BY_EMOTION: Record<string, string[]> = {
     "some warmth never leaves us",
   ],
   hope: [
-    "hope is a violet thread in the dark",
+    "hope is a sky that never fully darkens",
     "we dream because we must",
     "longing keeps us reaching forward",
     "even now, something blooms",
@@ -110,7 +114,7 @@ const LEGEND_PHRASES_BY_EMOTION: Record<string, string[]> = {
     "melancholy has its own beauty",
     "sorrow too deserves a place here",
     "some sadness is just love with nowhere to go",
-    "the deep places hold us too",
+    "the deep violet places hold us too",
     "even grief is a kind of holding on",
   ],
   anxious: [
@@ -120,10 +124,24 @@ const LEGEND_PHRASES_BY_EMOTION: Record<string, string[]> = {
     "racing thoughts eventually slow",
     "even chaos finds its rhythm",
   ],
+  angry: [
+    "anger is fire that asks to be seen",
+    "sometimes rage is the only honest thing",
+    "the burning heart still beats",
+    "anger too deserves its red release",
+    "even flame eventually finds stillness",
+  ],
+  worn: [
+    "the worn soul still carries on",
+    "weariness is not weakness",
+    "heavy hearts still beat",
+    "even the faded have their place",
+    "to be worn is to have lived",
+  ],
 };
 
-// Emotion order for cycling - ensures all 6 emotions shown before repeating
-const EMOTION_ORDER = ["joy", "calm", "love", "hope", "melancholy", "anxious"];
+// Emotion order for cycling - ensures all 8 emotions shown before repeating
+const EMOTION_ORDER = ["joy", "calm", "love", "hope", "melancholy", "anxious", "angry", "worn"];
 
 // Get legend phrase - cycles through all emotions before repeating any
 // Changes every 8 seconds (faster than other messages)
@@ -219,21 +237,21 @@ export default function EmotionPicker({
 
   const isHovered = (emotion: Emotion) => hoveredEmotion?.id === emotion.id;
 
-  // Calculate arch positions for 6 dots (desktop) or grid positions (mobile)
+  // Calculate arch positions for 8 dots (desktop) or grid positions (mobile)
   const getArchPosition = (index: number, total: number) => {
     if (isMobile) {
-      // 2x3 grid layout for mobile with labels
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      const spacingX = 80; // Horizontal spacing
+      // 2x4 grid layout for mobile with labels
+      const col = index % 4;
+      const row = Math.floor(index / 4);
+      const spacingX = 70; // Horizontal spacing
       const spacingY = 100; // Vertical spacing (extra room for labels)
-      const x = (col - 1) * spacingX; // -80, 0, 80
+      const x = (col - 1.5) * spacingX; // -105, -35, 35, 105
       const y = row * spacingY; // 0, 100
       return { x, y };
     }
 
     // Desktop: Rainbow arc - center higher (smaller y), edges lower (larger y)
-    const totalWidth = 400;
+    const totalWidth = 500;
     const arcHeight = 20;
     const x = (index / (total - 1)) * totalWidth - totalWidth / 2;
     const normalizedX = x / (totalWidth / 2);
@@ -244,13 +262,13 @@ export default function EmotionPicker({
   // Layout dimensions based on device
   // Mobile: taller to accommodate labels below dots (2 rows * 100px spacing + button height ~84px)
   const layout = isMobile
-    ? { width: 280, height: 200, labelTop: 160, centerX: 140 }
-    : { width: 480, height: 140, labelTop: 85, centerX: 240 };
+    ? { width: 320, height: 200, labelTop: 160, centerX: 160 }
+    : { width: 580, height: 140, labelTop: 85, centerX: 290 };
 
-  // Dot sizes based on device
-  const dotSize = isMobile ? 44 : 36;
-  const dotSizeHovered = isMobile ? 52 : 48;
-  const buttonSize = isMobile ? 56 : 64;
+  // Dot sizes based on device (slightly smaller on mobile for 4-column layout)
+  const dotSize = isMobile ? 38 : 36;
+  const dotSizeHovered = isMobile ? 46 : 48;
+  const buttonSize = isMobile ? 50 : 64;
 
   return (
     <motion.div

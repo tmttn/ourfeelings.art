@@ -731,9 +731,9 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
         }
 
         // Draw ribbons - continuous flow from right to left
-        // Sort by creation time (newest first) so new feelings appear immediately
+        // Sort by creation time (oldest first) so newer feelings render on top (drawn last)
         const sortedFeelings = [...feelingsRef.current].sort(
-          (a, b) => b.createdAt - a.createdAt
+          (a, b) => a.createdAt - b.createdAt
         );
 
         // Calculate aspect ratio correction for consistent visual appearance across screen sizes
@@ -746,15 +746,17 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
 
         // Track how many ribbons we've rendered this frame
         let renderedCount = 0;
+        const totalFeelings = sortedFeelings.length;
 
-        for (let fi = 0; fi < sortedFeelings.length; fi++) {
+        for (let fi = 0; fi < totalFeelings; fi++) {
           // Limit total rendered ribbons for performance (use FPS-adjusted count)
           if (renderedCount >= effectiveMaxRibbons) break;
 
           const feeling = sortedFeelings[fi];
-          // Stagger entry: each ribbon waits before appearing
-          // Use 500ms per ribbon but cap total stagger at 60 seconds so all ribbons appear within a minute
-          const staggerDelay = Math.min(fi * 500, 60000);
+          // Stagger entry: older ribbons wait longer, newer ones appear immediately
+          // Reverse the index so newest (last in sorted array) has staggerDelay of 0
+          const reverseIndex = totalFeelings - 1 - fi;
+          const staggerDelay = Math.min(reverseIndex * 500, 60000);
           const age = now - feeling.createdAt - staggerDelay;
           if (age < 0) continue; // Not yet time to show this ribbon
 

@@ -638,22 +638,24 @@ export default function WebGLRibbonRenderer({
       gl.clear(gl.COLOR_BUFFER_BIT);
 
       const currentFeelings = feelingsRef.current;
-      // Sort by creation time (newest first) so new feelings appear immediately
-      const sortedFeelings = [...currentFeelings].sort((a, b) => b.createdAt - a.createdAt);
+      // Sort by creation time (oldest first) so newer feelings render on top (drawn last)
+      const sortedFeelings = [...currentFeelings].sort((a, b) => a.createdAt - b.createdAt);
+      const totalFeelings = sortedFeelings.length;
 
       // Build ribbon instance data and path texture
       let ribbonCount = 0;
       const ribbonPositions: { x: number; y: number; color: [number, number, number] }[] = [];
 
-      for (let fi = 0; fi < sortedFeelings.length && ribbonCount < maxRibbons; fi++) {
+      for (let fi = 0; fi < totalFeelings && ribbonCount < maxRibbons; fi++) {
         const feeling = sortedFeelings[fi];
 
         // Skip feelings without valid path
         if (!feeling.path || feeling.path.length < 2) continue;
 
-        // Stagger entry: each ribbon waits before appearing
-        // Use 500ms per ribbon but cap total stagger at 60 seconds so all ribbons appear within a minute
-        const staggerDelay = Math.min(fi * 500, 60000);
+        // Stagger entry: older ribbons wait longer, newer ones appear immediately
+        // Reverse the index so newest (last in sorted array) has staggerDelay of 0
+        const reverseIndex = totalFeelings - 1 - fi;
+        const staggerDelay = Math.min(reverseIndex * 500, 60000);
         const age = time - feeling.createdAt - staggerDelay;
         if (age < 0) continue;
 

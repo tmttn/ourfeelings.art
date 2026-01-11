@@ -731,9 +731,9 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
         }
 
         // Draw ribbons - continuous flow from right to left
-        // Sort by creation time to ensure consistent stagger order
+        // Sort by creation time (newest first) so new feelings appear immediately
         const sortedFeelings = [...feelingsRef.current].sort(
-          (a, b) => a.createdAt - b.createdAt
+          (a, b) => b.createdAt - a.createdAt
         );
 
         // Calculate aspect ratio correction for consistent visual appearance across screen sizes

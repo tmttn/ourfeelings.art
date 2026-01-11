@@ -638,7 +638,8 @@ export default function WebGLRibbonRenderer({
       gl.clear(gl.COLOR_BUFFER_BIT);
 
       const currentFeelings = feelingsRef.current;
-      const sortedFeelings = [...currentFeelings].sort((a, b) => a.createdAt - b.createdAt);
+      // Sort by creation time (newest first) so new feelings appear immediately
+      const sortedFeelings = [...currentFeelings].sort((a, b) => b.createdAt - a.createdAt);
 
       // Build ribbon instance data and path texture
       let ribbonCount = 0;

@@ -752,8 +752,9 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
           if (renderedCount >= effectiveMaxRibbons) break;
 
           const feeling = sortedFeelings[fi];
-          // Stagger entry: each ribbon waits an additional 3 seconds before appearing
-          const staggerDelay = fi * 3000;
+          // Stagger entry: each ribbon waits before appearing
+          // Use 500ms per ribbon but cap total stagger at 60 seconds so all ribbons appear within a minute
+          const staggerDelay = Math.min(fi * 500, 60000);
           const age = now - feeling.createdAt - staggerDelay;
           if (age < 0) continue; // Not yet time to show this ribbon
 

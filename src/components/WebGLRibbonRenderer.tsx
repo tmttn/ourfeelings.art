@@ -650,7 +650,9 @@ export default function WebGLRibbonRenderer({
         // Skip feelings without valid path
         if (!feeling.path || feeling.path.length < 2) continue;
 
-        const staggerDelay = fi * 3000;
+        // Stagger entry: each ribbon waits before appearing
+        // Use 500ms per ribbon but cap total stagger at 60 seconds so all ribbons appear within a minute
+        const staggerDelay = Math.min(fi * 500, 60000);
         const age = time - feeling.createdAt - staggerDelay;
         if (age < 0) continue;
 

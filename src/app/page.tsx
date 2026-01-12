@@ -6,6 +6,7 @@ import P5Canvas from "@/components/P5Canvas";
 import AmbientInfo from "@/components/AmbientInfo";
 import EmotionPicker from "@/components/EmotionPicker";
 import Settings, { DEFAULT_SETTINGS, MOBILE_DEFAULT_SETTINGS, type PerformanceSettings } from "@/components/Settings";
+import InfoModal from "@/components/InfoModal";
 import { useIsMobile, usePrefersReducedMotion } from "@/lib/useIsMobile";
 import type { Feeling } from "@/types";
 import type { Emotion } from "@/lib/emotions";
@@ -56,7 +57,8 @@ export default function Home() {
   const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const [performanceSettings, setPerformanceSettings] = useState<PerformanceSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [uiPinned, setUiPinned] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [uiPinned, setUiPinned] = useState(true);
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rateLimitTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -361,7 +363,9 @@ export default function Home() {
         onOpenChange={setSettingsOpen}
         uiPinned={uiPinned}
         onUiPinnedChange={setUiPinned}
+        onInfoOpen={() => setInfoOpen(true)}
       />
+      <InfoModal isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
       <EmotionPicker
         onSelect={handleEmotionSelect}
         disabled={isSubmitting}

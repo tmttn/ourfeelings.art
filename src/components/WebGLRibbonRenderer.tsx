@@ -108,46 +108,68 @@ void main() {
   // Calculate aspect ratio for tangent calculations (used later)
   float aspectRatio = u_resolution.x / u_resolution.y;
 
-  // Calculate smoothed tangent using finite differences in GLOBAL parameter space
+  // Calculate smoothed tangent using MULTIPLE central differences
   // This smooths across segment boundaries where the miter spikes occur
-  // Sample Y values at positions slightly before and after current position
-  float epsilon = 2.0 / float(RIBBON_SEGMENTS); // Step size in global t space
+  // We use 3 different epsilon values and average them for extra smoothness
+  // This prevents kinks from rapid local curvature changes in the Perlin noise
 
-  // Convert epsilon to sample positions (in the periodic wave space)
-  float sampleMinus = fract(samplePos - epsilon + 1.0);
-  float samplePlus = fract(samplePos + epsilon);
+  float dydt = 0.0;
+  float totalWeight = 0.0;
 
-  // Sample Y at minus position
-  float scaledMinus = sampleMinus * (pathPoints - 1.0);
-  float segIdxMinus = floor(scaledMinus);
-  float segTMinus = fract(scaledMinus);
-  float im0 = mod(segIdxMinus - 1.0 + pathPoints, pathPoints);
-  float im1 = segIdxMinus;
-  float im2 = mod(segIdxMinus + 1.0, pathPoints);
-  float im3 = mod(segIdxMinus + 2.0, pathPoints);
-  float ym0 = texelFetch(u_pathTexture, ivec2(int(im0), row), 0).r;
-  float ym1 = texelFetch(u_pathTexture, ivec2(int(im1), row), 0).r;
-  float ym2 = texelFetch(u_pathTexture, ivec2(int(im2), row), 0).r;
-  float ym3 = texelFetch(u_pathTexture, ivec2(int(im3), row), 0).r;
-  float yMinus = catmullRom(ym0, ym1, ym2, ym3, segTMinus);
+  // Sample at 3 different scales: small (local detail), medium, large (global trend)
+  // Weights favor the medium scale but include others for robustness
+  float epsilons[3];
+  float weights[3];
+  epsilons[0] = 4.0 / float(RIBBON_SEGMENTS);   // Small - local detail
+  epsilons[1] = 12.0 / float(RIBBON_SEGMENTS);  // Medium - primary smoothing
+  epsilons[2] = 24.0 / float(RIBBON_SEGMENTS);  // Large - global trend
+  weights[0] = 0.2;
+  weights[1] = 0.5;
+  weights[2] = 0.3;
 
-  // Sample Y at plus position
-  float scaledPlus = samplePlus * (pathPoints - 1.0);
-  float segIdxPlus = floor(scaledPlus);
-  float segTPlus = fract(scaledPlus);
-  float ip0 = mod(segIdxPlus - 1.0 + pathPoints, pathPoints);
-  float ip1 = segIdxPlus;
-  float ip2 = mod(segIdxPlus + 1.0, pathPoints);
-  float ip3 = mod(segIdxPlus + 2.0, pathPoints);
-  float yp0 = texelFetch(u_pathTexture, ivec2(int(ip0), row), 0).r;
-  float yp1 = texelFetch(u_pathTexture, ivec2(int(ip1), row), 0).r;
-  float yp2 = texelFetch(u_pathTexture, ivec2(int(ip2), row), 0).r;
-  float yp3 = texelFetch(u_pathTexture, ivec2(int(ip3), row), 0).r;
-  float yPlus = catmullRom(yp0, yp1, yp2, yp3, segTPlus);
+  for (int ei = 0; ei < 3; ei++) {
+    float eps = epsilons[ei];
+    float w = weights[ei];
 
-  // Compute smoothed dy/dt using central difference
-  // This gives us a smooth tangent that works across segment boundaries
-  float dydt = (yPlus - yMinus) / (2.0 * epsilon);
+    // Convert epsilon to sample positions (in the periodic wave space)
+    float sampleMinus = fract(samplePos - eps + 1.0);
+    float samplePlus = fract(samplePos + eps);
+
+    // Sample Y at minus position
+    float scaledMinus = sampleMinus * (pathPoints - 1.0);
+    float segIdxMinus = floor(scaledMinus);
+    float segTMinus = fract(scaledMinus);
+    float im0 = mod(segIdxMinus - 1.0 + pathPoints, pathPoints);
+    float im1 = segIdxMinus;
+    float im2 = mod(segIdxMinus + 1.0, pathPoints);
+    float im3 = mod(segIdxMinus + 2.0, pathPoints);
+    float ym0 = texelFetch(u_pathTexture, ivec2(int(im0), row), 0).r;
+    float ym1 = texelFetch(u_pathTexture, ivec2(int(im1), row), 0).r;
+    float ym2 = texelFetch(u_pathTexture, ivec2(int(im2), row), 0).r;
+    float ym3 = texelFetch(u_pathTexture, ivec2(int(im3), row), 0).r;
+    float yMinus = catmullRom(ym0, ym1, ym2, ym3, segTMinus);
+
+    // Sample Y at plus position
+    float scaledPlus = samplePlus * (pathPoints - 1.0);
+    float segIdxPlus = floor(scaledPlus);
+    float segTPlus = fract(scaledPlus);
+    float ip0 = mod(segIdxPlus - 1.0 + pathPoints, pathPoints);
+    float ip1 = segIdxPlus;
+    float ip2 = mod(segIdxPlus + 1.0, pathPoints);
+    float ip3 = mod(segIdxPlus + 2.0, pathPoints);
+    float yp0 = texelFetch(u_pathTexture, ivec2(int(ip0), row), 0).r;
+    float yp1 = texelFetch(u_pathTexture, ivec2(int(ip1), row), 0).r;
+    float yp2 = texelFetch(u_pathTexture, ivec2(int(ip2), row), 0).r;
+    float yp3 = texelFetch(u_pathTexture, ivec2(int(ip3), row), 0).r;
+    float yPlus = catmullRom(yp0, yp1, yp2, yp3, segTPlus);
+
+    // Accumulate weighted central difference
+    dydt += w * (yPlus - yMinus) / (2.0 * eps);
+    totalWeight += w;
+  }
+
+  // Normalize by total weight
+  dydt /= totalWeight;
 
   // Calculate ribbon center position
   float screenX = a_headX + (1.0 - t) * a_ribbonLength;

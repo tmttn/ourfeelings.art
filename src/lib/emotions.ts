@@ -132,7 +132,8 @@ export function generateRibbonPath(
 
   // Pre-sample noise at multiple octaves for organic movement
   // Each octave has different frequency and is made periodic
-  const octaves = 5;
+  // Reduced from 5 to 4 octaves - the 5th (16x frequency) was causing too many micro-kinks
+  const octaves = 4;
   const noiseOctaves: number[][] = [];
 
   for (let oct = 0; oct < octaves; oct++) {

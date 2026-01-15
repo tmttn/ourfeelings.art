@@ -651,7 +651,9 @@ export default function WebGLRibbonRenderer({
       let ribbonCount = 0;
       const ribbonPositions: { x: number; y: number; color: [number, number, number] }[] = [];
 
-      for (let fi = 0; fi < totalFeelings && ribbonCount < maxRibbons; fi++) {
+      // Start from an offset to cull oldest ribbons first when exceeding maxRibbons
+      const startIndex = Math.max(0, totalFeelings - maxRibbons);
+      for (let fi = startIndex; fi < totalFeelings; fi++) {
         const feeling = sortedFeelings[fi];
 
         // Skip feelings without valid path

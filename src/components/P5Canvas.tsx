@@ -744,13 +744,11 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
         // On portrait (aspectRatio < 1), ribbons need to be much longer to maintain visual proportions
         const ribbonLengthMultiplier = Math.min(3.0, REFERENCE_ASPECT / aspectRatio);
 
-        // Track how many ribbons we've rendered this frame
-        let renderedCount = 0;
         const totalFeelings = sortedFeelings.length;
 
-        for (let fi = 0; fi < totalFeelings; fi++) {
-          // Limit total rendered ribbons for performance (use FPS-adjusted count)
-          if (renderedCount >= effectiveMaxRibbons) break;
+        // Start from an offset to cull oldest ribbons first when exceeding limit
+        const startIndex = Math.max(0, totalFeelings - effectiveMaxRibbons);
+        for (let fi = startIndex; fi < totalFeelings; fi++) {
 
           const feeling = sortedFeelings[fi];
           // Stagger entry: older ribbons wait longer, newer ones appear immediately
@@ -886,7 +884,7 @@ export default function P5Canvas({ feelings, settings, isMobile = false, reduced
               particleSpawnRate,
               false
             );
-            renderedCount++;
+
           }
         }
 

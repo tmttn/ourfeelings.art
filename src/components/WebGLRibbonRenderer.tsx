@@ -28,6 +28,7 @@ in float a_ribbonLength; // Length of ribbon in screen units
 in float a_pathIndex;    // Which row in path texture this ribbon uses
 in float a_pathLength;   // Number of valid points in this ribbon's path
 in float a_waveOffset;   // Wave offset for snake animation (0-1)
+in float a_vitality;     // Vitality factor (1=fresh, 0=dying) for amplitude scaling
 
 uniform vec2 u_resolution;
 uniform float u_time;
@@ -80,19 +81,18 @@ void main() {
   float pathPoints = a_pathLength;
   int row = int(a_pathIndex);
 
-  // SNAKE ANIMATION: The wave pattern slides through the ribbon over time
-  // samplePos determines which part of the periodic wave to show at this point
-  // waveOffset slides the whole pattern, t offsets based on position along ribbon
-  float samplePos = fract(a_waveOffset + t); // fract ensures [0, 1)
+  // Snake animation: wave travels along ribbon
+  // waveOffset is pre-normalized (headTravel / ribbonLength) on CPU
+  float samplePos = fract(t + a_waveOffset);
 
-  // Find which segment we're in using the animated sample position
-  float scaledT = samplePos * (pathPoints - 1.0);
+  // Find which segment we're in (periodic path)
+  float scaledT = samplePos * pathPoints;
   float segmentIndex = floor(scaledT);
   float segmentT = fract(scaledT);
 
-  // For periodic path, we wrap around
+  // Periodic index wrapping for seamless snake animation
   float i0 = mod(segmentIndex - 1.0 + pathPoints, pathPoints);
-  float i1 = segmentIndex;
+  float i1 = mod(segmentIndex, pathPoints);
   float i2 = mod(segmentIndex + 1.0, pathPoints);
   float i3 = mod(segmentIndex + 2.0, pathPoints);
 
@@ -105,71 +105,15 @@ void main() {
   // Interpolate Y using Catmull-Rom
   float pathY_interp = catmullRom(y0, y1, y2, y3, segmentT);
 
+  // Vitality only slightly reduces wave amplitude (keeps ribbons spread out)
+  float amplitudeScale = 0.85 + 0.15 * a_vitality; // 85% to 100%
+  pathY_interp = 0.5 + (pathY_interp - 0.5) * amplitudeScale;
+
   // Calculate aspect ratio for tangent calculations (used later)
   float aspectRatio = u_resolution.x / u_resolution.y;
 
-  // Calculate smoothed tangent using MULTIPLE central differences
-  // This smooths across segment boundaries where the miter spikes occur
-  // We use 3 different epsilon values and average them for extra smoothness
-  // This prevents kinks from rapid local curvature changes in the Perlin noise
-
-  float dydt = 0.0;
-  float totalWeight = 0.0;
-
-  // Sample at 3 different scales: small (local detail), medium, large (global trend)
-  // Weights favor the medium scale but include others for robustness
-  float epsilons[3];
-  float weights[3];
-  epsilons[0] = 4.0 / float(RIBBON_SEGMENTS);   // Small - local detail
-  epsilons[1] = 12.0 / float(RIBBON_SEGMENTS);  // Medium - primary smoothing
-  epsilons[2] = 24.0 / float(RIBBON_SEGMENTS);  // Large - global trend
-  weights[0] = 0.2;
-  weights[1] = 0.5;
-  weights[2] = 0.3;
-
-  for (int ei = 0; ei < 3; ei++) {
-    float eps = epsilons[ei];
-    float w = weights[ei];
-
-    // Convert epsilon to sample positions (in the periodic wave space)
-    float sampleMinus = fract(samplePos - eps + 1.0);
-    float samplePlus = fract(samplePos + eps);
-
-    // Sample Y at minus position
-    float scaledMinus = sampleMinus * (pathPoints - 1.0);
-    float segIdxMinus = floor(scaledMinus);
-    float segTMinus = fract(scaledMinus);
-    float im0 = mod(segIdxMinus - 1.0 + pathPoints, pathPoints);
-    float im1 = segIdxMinus;
-    float im2 = mod(segIdxMinus + 1.0, pathPoints);
-    float im3 = mod(segIdxMinus + 2.0, pathPoints);
-    float ym0 = texelFetch(u_pathTexture, ivec2(int(im0), row), 0).r;
-    float ym1 = texelFetch(u_pathTexture, ivec2(int(im1), row), 0).r;
-    float ym2 = texelFetch(u_pathTexture, ivec2(int(im2), row), 0).r;
-    float ym3 = texelFetch(u_pathTexture, ivec2(int(im3), row), 0).r;
-    float yMinus = catmullRom(ym0, ym1, ym2, ym3, segTMinus);
-
-    // Sample Y at plus position
-    float scaledPlus = samplePlus * (pathPoints - 1.0);
-    float segIdxPlus = floor(scaledPlus);
-    float segTPlus = fract(scaledPlus);
-    float ip0 = mod(segIdxPlus - 1.0 + pathPoints, pathPoints);
-    float ip1 = segIdxPlus;
-    float ip2 = mod(segIdxPlus + 1.0, pathPoints);
-    float ip3 = mod(segIdxPlus + 2.0, pathPoints);
-    float yp0 = texelFetch(u_pathTexture, ivec2(int(ip0), row), 0).r;
-    float yp1 = texelFetch(u_pathTexture, ivec2(int(ip1), row), 0).r;
-    float yp2 = texelFetch(u_pathTexture, ivec2(int(ip2), row), 0).r;
-    float yp3 = texelFetch(u_pathTexture, ivec2(int(ip3), row), 0).r;
-    float yPlus = catmullRom(yp0, yp1, yp2, yp3, segTPlus);
-
-    // Accumulate weighted central difference
-    dydt += w * (yPlus - yMinus) / (2.0 * eps);
-    totalWeight += w;
-  }
-
-  // Normalize by total weight
-  dydt /= totalWeight;
+  // Calculate tangent using Catmull-Rom derivative (analytically smooth)
+  float dydt = catmullRomDerivative(y0, y1, y2, y3, segmentT) * (pathPoints - 1.0);
 
   // Calculate ribbon center position
   float screenX = a_headX + (1.0 - t) * a_ribbonLength;
@@ -398,6 +342,15 @@ interface Particle {
   maxLife: number;
 }
 
+// Cache for per-feeling computed values
+interface FeelingCache {
+  hash: number;
+  rgb: [number, number, number];
+  baseRibbonLength: number;
+  baseThickness: number;
+  baseSpeedVariation: number;
+}
+
 export default function WebGLRibbonRenderer({
   feelings,
   maxVisibleRibbons = 500,
@@ -411,8 +364,36 @@ export default function WebGLRibbonRenderer({
   const feelingsRef = useRef<Feeling[]>(feelings);
   const particlesRef = useRef<Particle[]>([]);
 
+  // Caches for performance
+  const sortedFeelingsRef = useRef<Feeling[]>([]);
+  const feelingsCacheRef = useRef<Map<string, FeelingCache>>(new Map());
+  const lastFeelingsLengthRef = useRef<number>(0);
+
   useEffect(() => {
     feelingsRef.current = feelings;
+
+    // Only re-sort and rebuild cache when feelings array changes
+    if (feelings.length !== lastFeelingsLengthRef.current ||
+        feelings[0]?.id !== sortedFeelingsRef.current[0]?.id) {
+      // Sort by creation time (oldest first)
+      sortedFeelingsRef.current = [...feelings].sort((a, b) => a.createdAt - b.createdAt);
+      lastFeelingsLengthRef.current = feelings.length;
+
+      // Build/update per-feeling cache
+      const cache = feelingsCacheRef.current;
+      for (const feeling of feelings) {
+        if (!cache.has(feeling.id)) {
+          const hash = hashString(feeling.id);
+          cache.set(feeling.id, {
+            hash,
+            rgb: hexToRgb(feeling.color),
+            baseRibbonLength: seededRandom(hash, 0.4, 0.9),
+            baseThickness: seededRandom(hash + 1, 16, 36),
+            baseSpeedVariation: seededRandom(hash + 3, 0.85, 1.15),
+          });
+        }
+      }
+    }
   }, [feelings]);
 
   const initWebGL = useCallback(() => {
@@ -489,6 +470,7 @@ export default function WebGLRibbonRenderer({
     const r_pathIndexLoc = gl.getAttribLocation(ribbonProgram, 'a_pathIndex');
     const r_pathLengthLoc = gl.getAttribLocation(ribbonProgram, 'a_pathLength');
     const r_waveOffsetLoc = gl.getAttribLocation(ribbonProgram, 'a_waveOffset');
+    const r_vitalityLoc = gl.getAttribLocation(ribbonProgram, 'a_vitality');
     const r_resolutionLoc = gl.getUniformLocation(ribbonProgram, 'u_resolution');
     const r_timeLoc = gl.getUniformLocation(ribbonProgram, 'u_time');
     const r_glowPassLoc = gl.getUniformLocation(ribbonProgram, 'u_glowPass');
@@ -551,11 +533,11 @@ export default function WebGLRibbonRenderer({
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
-    // Instance buffer: color(3) + alpha(1) + thickness(1) + headX(1) + ribbonLength(1) + pathIndex(1) + pathLength(1) + waveOffset(1) = 10 floats
+    // Instance buffer: color(3) + alpha(1) + thickness(1) + headX(1) + ribbonLength(1) + pathIndex(1) + pathLength(1) + waveOffset(1) + vitality(1) = 11 floats
     const instanceBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
 
-    const INSTANCE_FLOATS = 10;
+    const INSTANCE_FLOATS = 11;
     const INSTANCE_BYTES = INSTANCE_FLOATS * 4;
 
     setupAttr(r_colorLoc, 3, INSTANCE_BYTES, 0, 1);
@@ -566,6 +548,7 @@ export default function WebGLRibbonRenderer({
     setupAttr(r_pathIndexLoc, 1, INSTANCE_BYTES, 28, 1);
     setupAttr(r_pathLengthLoc, 1, INSTANCE_BYTES, 32, 1);
     setupAttr(r_waveOffsetLoc, 1, INSTANCE_BYTES, 36, 1);
+    setupAttr(r_vitalityLoc, 1, INSTANCE_BYTES, 40, 1);
 
     // Create path texture (using NEAREST filtering for texelFetch)
     const pathTexture = gl.createTexture();
@@ -659,10 +642,10 @@ export default function WebGLRibbonRenderer({
       gl.clearColor(0.04, 0.04, 0.07, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
-      const currentFeelings = feelingsRef.current;
-      // Sort by creation time (oldest first) so newer feelings render on top (drawn last)
-      const sortedFeelings = [...currentFeelings].sort((a, b) => a.createdAt - b.createdAt);
+      // Use cached sorted feelings
+      const sortedFeelings = sortedFeelingsRef.current;
       const totalFeelings = sortedFeelings.length;
+      const feelingsCache = feelingsCacheRef.current;
 
       // Build ribbon instance data and path texture
       let ribbonCount = 0;
@@ -681,10 +664,10 @@ export default function WebGLRibbonRenderer({
         const age = time - feeling.createdAt - staggerDelay;
         if (age < 0) continue;
 
-        const hash = hashString(feeling.id);
-        const baseRibbonLength = seededRandom(hash, 0.4, 0.9);
-        const baseThickness = seededRandom(hash + 1, 16, 36);
-        const baseSpeedVariation = seededRandom(hash + 3, 0.85, 1.15);
+        // Use cached per-feeling values
+        const cached = feelingsCache.get(feeling.id);
+        if (!cached) continue;
+        const { baseRibbonLength, baseThickness, baseSpeedVariation, rgb } = cached;
 
         const ageRatio = Math.min(1, age / SEVEN_DAYS_MS);
         const vitality = 1 - Math.pow(ageRatio, 0.7);
@@ -710,10 +693,10 @@ export default function WebGLRibbonRenderer({
         const tailX = headX + ribbonLength;
         if (headX > 1.3 || tailX < -0.3) continue;
 
-        const [r, g, b] = hexToRgb(feeling.color);
+        const [r, g, b] = rgb;
 
-        // Wave offset - makes the wave pattern slide through the ribbon (snake animation)
-        const waveOffset = (headTravel * 2) % 1;
+        // Wave offset - precompute division for better GPU performance
+        const waveOffset = headTravel / ribbonLength;
 
         // Write instance data
         const pathLen = Math.min(feeling.path.length, MAX_PATH_POINTS);
@@ -728,6 +711,7 @@ export default function WebGLRibbonRenderer({
         instanceData[idx + 7] = ribbonCount; // Path index
         instanceData[idx + 8] = pathLen;     // Path length
         instanceData[idx + 9] = waveOffset;  // Wave offset for snake animation
+        instanceData[idx + 10] = vitality;   // Vitality for amplitude scaling
 
         // Write path data to texture
         // The path is stored as [x, y] pairs, we only need Y values
@@ -757,14 +741,17 @@ export default function WebGLRibbonRenderer({
         spawnParticle(pos.x, pos.y, pos.color);
       }
 
-      // Update particles
-      for (let i = particles.length - 1; i >= 0; i--) {
+      // Update particles (swap-and-pop for O(1) removal)
+      let i = 0;
+      while (i < particles.length) {
         const p = particles[i];
         p.life -= deltaTime;
 
         if (p.life <= 0) {
-          particles.splice(i, 1);
-          continue;
+          // Swap with last element and pop (O(1) instead of splice's O(n))
+          particles[i] = particles[particles.length - 1];
+          particles.pop();
+          continue; // Don't increment i, check the swapped element
         }
 
         p.x += p.vx;
@@ -776,6 +763,8 @@ export default function WebGLRibbonRenderer({
         if (p.x > canvas.width) p.x = 0;
         if (p.y < 0) p.y = canvas.height;
         if (p.y > canvas.height) p.y = 0;
+
+        i++;
       }
 
       while (particles.length < targetParticles) {

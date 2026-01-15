@@ -3,9 +3,9 @@ export interface Emotion {
   id: string;
   label: string;
   color: string;
-  // Ribbon generation parameters
-  waveAmplitude: number; // How wavy the ribbon is
-  waveFrequency: number; // How many waves
+  // Ribbon generation parameters (Bézier spline approach)
+  controlPoints: [number, number]; // Min and max control points for spline
+  amplitude: number; // Max vertical deviation from center
   flowSpeed: number; // Relative speed modifier
 }
 
@@ -14,195 +14,164 @@ export const EMOTIONS: Emotion[] = [
     id: "joy",
     label: "joyful",
     color: "#facc15", // Bright yellow
-    waveAmplitude: 0.07,
-    waveFrequency: 2.5,
+    controlPoints: [7, 8],
+    amplitude: 0.25,
     flowSpeed: 1.2,
   },
   {
     id: "calm",
     label: "calm",
     color: "#2dd4bf", // Teal
-    waveAmplitude: 0.05,
-    waveFrequency: 1.8,
+    controlPoints: [3, 4],
+    amplitude: 0.18,
     flowSpeed: 0.7,
   },
   {
     id: "love",
     label: "loving",
     color: "#f472b6", // Warm pink
-    waveAmplitude: 0.06,
-    waveFrequency: 2.2,
+    controlPoints: [5, 6],
+    amplitude: 0.20,
     flowSpeed: 0.9,
   },
   {
     id: "hope",
     label: "hopeful",
     color: "#38bdf8", // Sky blue
-    waveAmplitude: 0.055,
-    waveFrequency: 2.0,
+    controlPoints: [5, 6],
+    amplitude: 0.20,
     flowSpeed: 1.0,
   },
   {
     id: "melancholy",
     label: "melancholic",
     color: "#8b5cf6", // Deep violet
-    waveAmplitude: 0.045,
-    waveFrequency: 1.6,
+    controlPoints: [4, 5],
+    amplitude: 0.18,
     flowSpeed: 0.5,
   },
   {
     id: "anxious",
     label: "anxious",
     color: "#fb923c", // Orange
-    waveAmplitude: 0.08,
-    waveFrequency: 2.8,
+    controlPoints: [10, 12],
+    amplitude: 0.30,
     flowSpeed: 1.5,
   },
   {
     id: "angry",
     label: "angry",
     color: "#ef4444", // Red
-    waveAmplitude: 0.09,
-    waveFrequency: 3.2,
+    controlPoints: [12, 14],
+    amplitude: 0.35,
     flowSpeed: 1.8,
   },
   {
     id: "worn",
     label: "worn",
     color: "#94a3b8", // Muted sage
-    waveAmplitude: 0.035,
-    waveFrequency: 1.3,
+    controlPoints: [3, 4],
+    amplitude: 0.12,
     flowSpeed: 0.4,
   },
 ];
 
-// Simple 1D Perlin noise implementation for ribbon generation
-// This runs on the server so we can't use p5's noise
-function fade(t: number): number {
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
+/**
+ * Mulberry32 - Fast, seedable 32-bit PRNG
+ * Creates deterministic random sequences from a string seed
+ */
+function createSeededRng(seed: string): () => number {
+  // Hash the string seed to a 32-bit integer
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + t * (b - a);
-}
-
-function grad(hash: number, x: number): number {
-  return (hash & 1) === 0 ? x : -x;
-}
-
-// Permutation table
-const p: number[] = [];
-for (let i = 0; i < 256; i++) p[i] = i;
-// Shuffle with fixed seed for reproducibility
-for (let i = 255; i > 0; i--) {
-  const j = Math.floor((i + 1) * 0.618033988749895 * (i + 1)) % (i + 1);
-  [p[i], p[j]] = [p[j], p[i]];
-}
-const perm = [...p, ...p]; // Double it for overflow
-
-function noise1D(x: number, seed: number): number {
-  // Offset by seed to get different sequences
-  x = x + seed * 1000;
-  const xi = Math.floor(x) & 255;
-  const xf = x - Math.floor(x);
-  const u = fade(xf);
-  return lerp(grad(perm[xi], xf), grad(perm[xi + 1], xf - 1), u);
+  // Mulberry32 PRNG
+  return function() {
+    hash |= 0;
+    hash = (hash + 0x6d2b79f5) | 0;
+    let t = Math.imul(hash ^ (hash >>> 15), 1 | hash);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /**
- * Generate a smooth organic wave path for a ribbon based on emotion
- * Uses multiple octaves of Perlin noise for natural, non-wave-like motion
- * The path is PERIODIC - start and end Y values match for seamless looping
+ * Catmull-Rom spline interpolation
+ * Given 4 control points and t in [0,1], returns the interpolated point
+ * This creates smooth curves that pass through the middle two points
+ */
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  // Catmull-Rom basis matrix (tension = 0.5)
+  return 0.5 * (
+    (2 * p1) +
+    (-p0 + p2) * t +
+    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+    (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+  );
+}
+
+/**
+ * Generate a smooth PERIODIC wave path for a ribbon based on emotion
+ * Uses Catmull-Rom splines with random control points in a closed loop
+ * The path seamlessly wraps for smooth snake animation
  */
 export function generateRibbonPath(
   emotion: Emotion,
   startY: number = 0.5,
-  seed: number = Math.random()
+  seed: string = Math.random().toString()
 ): [number, number][] {
-  const path: [number, number][] = [];
-  // Reduced from 100 to 32 points - Catmull-Rom interpolation on client smooths this out
-  // This cuts payload size by ~70% while maintaining visual quality
-  const points = 32;
+  const rng = createSeededRng(seed);
 
-  // Base amplitude from emotion (how much vertical movement)
-  const baseAmplitude = Math.max(0.12, emotion.waveAmplitude * 2.5);
+  // Determine number of control points based on emotion
+  const [minPoints, maxPoints] = emotion.controlPoints;
+  const numControlPoints = minPoints + Math.floor(rng() * (maxPoints - minPoints + 1));
 
-  // Number of complete cycles for periodicity
-  const cycles = Math.round(Math.max(3, emotion.waveFrequency + seed * 2));
-
-  // Pre-sample noise at multiple octaves for organic movement
-  // Each octave has different frequency and is made periodic
-  // Reduced from 5 to 4 octaves - the 5th (16x frequency) was causing too many micro-kinks
-  const octaves = 4;
-  const noiseOctaves: number[][] = [];
-
-  for (let oct = 0; oct < octaves; oct++) {
-    const octaveFreq = cycles * Math.pow(2, oct); // 1x, 2x, 4x, 8x, 16x frequency
-    const values: number[] = [];
-    for (let i = 0; i <= octaveFreq; i++) {
-      values.push(noise1D(i * 0.7, seed + oct * 100));
-    }
-    // Make periodic
-    values[octaveFreq] = values[0];
-    noiseOctaves.push(values);
+  // Generate Y values for control points (treated as circular array)
+  const controlY: number[] = [];
+  for (let i = 0; i < numControlPoints; i++) {
+    const yOffset = (rng() - 0.5) * 2 * emotion.amplitude;
+    controlY.push(startY + yOffset);
   }
 
-  // Helper to sample periodic noise with smoothstep interpolation
-  const samplePeriodicNoise = (
-    t: number,
-    values: number[],
-    freq: number
-  ): number => {
-    const scaled = t * freq;
+  // Sample the PERIODIC spline at 64 points
+  const path: [number, number][] = [];
+  const outputPoints = 64;
+
+  for (let i = 0; i < outputPoints; i++) {
+    // t goes from 0 to just before 1 (periodic, so t=1 would equal t=0)
+    const t = i / outputPoints;
+
+    // Map t to control point space (periodic)
+    const scaled = t * numControlPoints;
     const idx = Math.floor(scaled);
-    const frac = scaled - idx;
-    const smooth = frac * frac * (3 - 2 * frac); // smoothstep
-    return values[idx] + (values[idx + 1] - values[idx]) * smooth;
-  };
+    const localT = scaled - idx;
 
-  // Generate points
-  for (let i = 0; i < points; i++) {
-    const t = i / points;
-    const x = t;
+    // Get 4 control points with PERIODIC wrapping
+    const i0 = ((idx - 1) % numControlPoints + numControlPoints) % numControlPoints;
+    const i1 = idx % numControlPoints;
+    const i2 = (idx + 1) % numControlPoints;
+    const i3 = (idx + 2) % numControlPoints;
 
-    // Sum multiple octaves of noise (fractal Brownian motion style)
-    let noiseSum = 0;
-    let amplitudeSum = 0;
-    let currentAmp = 1;
-    const persistence = 0.5; // How much each octave contributes
-
-    for (let oct = 0; oct < octaves; oct++) {
-      const octaveFreq = cycles * Math.pow(2, oct);
-      const noiseVal = samplePeriodicNoise(t, noiseOctaves[oct], octaveFreq);
-      noiseSum += noiseVal * currentAmp;
-      amplitudeSum += currentAmp;
-      currentAmp *= persistence;
-    }
-
-    // Normalize
-    const normalizedNoise = noiseSum / amplitudeSum;
-
-    // Add a very subtle underlying wave for gentle flow direction
-    const subtleWave =
-      Math.sin(t * Math.PI * 2 * cycles + seed * Math.PI * 2) * 0.15;
-
-    // Combine: mostly noise, slight wave influence
-    const y =
-      startY + (normalizedNoise * 0.85 + subtleWave * 0.15) * baseAmplitude;
-
-    path.push([x, Math.max(0.08, Math.min(0.92, y))]);
+    const y = catmullRom(controlY[i0], controlY[i1], controlY[i2], controlY[i3], localT);
+    const clampedY = Math.max(0.08, Math.min(0.92, y));
+    path.push([t, clampedY]);
   }
 
   return path;
 }
 
 /**
- * Get a random Y position weighted toward center
+ * Get a random Y position with good vertical spread
+ * Uses uniform distribution for even coverage across the canvas
  */
 export function getRandomStartY(): number {
-  // Gaussian-ish distribution centered at 0.5
-  const u1 = Math.random();
-  const u2 = Math.random();
-  const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return 0.5 + gaussian * 0.15; // Centered at 0.5, most within 0.2-0.8
+  // Uniform distribution from 0.08 to 0.92 (nearly full height)
+  return 0.08 + Math.random() * 0.84;
 }

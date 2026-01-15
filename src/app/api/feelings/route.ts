@@ -126,16 +126,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate the ribbon path based on the emotion
-    const startY = getRandomStartY();
-    const seed = Math.random();
-    const path = generateRibbonPath(emotion, startY, seed);
-
     // Create the feeling with an update hash for the creator
     const now = Date.now();
     const updateHash = uuidv4(); // Secret token only the creator knows
+    const id = uuidv4();
+
+    // Generate the ribbon path based on the emotion
+    // Use the feeling ID as seed for deterministic, reproducible paths
+    const startY = getRandomStartY();
+    const path = generateRibbonPath(emotion, startY, id);
+
     const feeling: Feeling = {
-      id: uuidv4(),
+      id,
       emotionId: emotion.id,
       color: emotion.color,
       path,
@@ -217,24 +219,28 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Generate new ribbon path
-    const startY = getRandomStartY();
-    const seed = Math.random();
-    const path = generateRibbonPath(emotion, startY, seed);
     const now = Date.now();
-
     let updatedFeeling: Feeling | null = null;
 
     if (isDev && !hasKV) {
-      updatedFeeling = updateDevFeeling(updateHash, {
-        emotionId: emotion.id,
-        color: emotion.color,
-        path,
-        createdAt: now, // Reset lifespan
-        expiresAt: now + FEELINGS_TTL,
-      });
-      if (updatedFeeling) {
-        setDevRateLimit(ip);
+      // Find the feeling first to get its ID for deterministic path generation
+      const feelings = getDevFeelings();
+      const existingFeeling = feelings.find((f) => f.updateHash === updateHash);
+      if (existingFeeling) {
+        // Generate new ribbon path using existing ID as seed
+        const startY = getRandomStartY();
+        const path = generateRibbonPath(emotion, startY, existingFeeling.id);
+
+        updatedFeeling = updateDevFeeling(updateHash, {
+          emotionId: emotion.id,
+          color: emotion.color,
+          path,
+          createdAt: now, // Reset lifespan
+          expiresAt: now + FEELINGS_TTL,
+        });
+        if (updatedFeeling) {
+          setDevRateLimit(ip);
+        }
       }
     } else {
       // Get existing feelings
@@ -244,6 +250,10 @@ export async function PUT(request: NextRequest) {
       // Find and update the feeling
       const idx = feelings.findIndex((f) => f.updateHash === updateHash);
       if (idx !== -1) {
+        // Generate new ribbon path using existing ID as seed
+        const startY = getRandomStartY();
+        const path = generateRibbonPath(emotion, startY, feelings[idx].id);
+
         feelings[idx] = {
           ...feelings[idx],
           emotionId: emotion.id,

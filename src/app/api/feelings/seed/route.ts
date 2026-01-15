@@ -31,13 +31,13 @@ export async function POST() {
       const age = Math.random() * sevenDays;
       const createdAt = now - age;
 
-      // Generate path
+      // Generate ID first, then use it as seed for deterministic path
+      const id = uuidv4();
       const startY = getRandomStartY();
-      const seed = Math.random();
-      const path = generateRibbonPath(emotion, startY, seed);
+      const path = generateRibbonPath(emotion, startY, id);
 
       const feeling: Feeling = {
-        id: uuidv4(),
+        id,
         emotionId: emotion.id,
         color: emotion.color,
         path,

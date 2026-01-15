@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import P5Canvas from "@/components/P5Canvas";
 import AmbientInfo from "@/components/AmbientInfo";
@@ -23,6 +23,7 @@ const IDLE_TIMEOUT = 3000; // 3 seconds of no interaction
 const MOBILE_IDLE_TIMEOUT = 5000; // 5 seconds on mobile (longer since no hover)
 const POST_ACTION_TIMEOUT = 10000; // 10 seconds after submitting to read rate limit message
 const STORAGE_KEY = "river-of-feelings-hash";
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
 // Reduced motion settings - minimal animation for accessibility
 const REDUCED_MOTION_SETTINGS: PerformanceSettings = {
@@ -61,6 +62,12 @@ export default function Home() {
   const [uiPinned, setUiPinned] = useState(true);
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Count only non-expired feelings (those less than 7 days old)
+  const activeFeelingsCount = useMemo(() => {
+    const now = Date.now();
+    return feelings.filter(f => (now - f.createdAt) < SEVEN_DAYS_MS).length;
+  }, [feelings]);
   const rateLimitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasSetMobileDefaults = useRef(false);
   const etagRef = useRef<string | null>(null);
@@ -354,11 +361,11 @@ export default function Home() {
           reducedMotion={prefersReducedMotion}
         />
       )}
-      <AmbientInfo feelingsCount={feelings.length} visible={uiVisible || uiPinned} />
+      <AmbientInfo feelingsCount={activeFeelingsCount} visible={uiVisible || uiPinned} />
       <Settings
         settings={performanceSettings}
         onSettingsChange={setPerformanceSettings}
-        feelingsCount={feelings.length}
+        feelingsCount={activeFeelingsCount}
         visible={uiVisible || settingsOpen || uiPinned}
         onOpenChange={setSettingsOpen}
         uiPinned={uiPinned}

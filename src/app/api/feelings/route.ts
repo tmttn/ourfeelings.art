@@ -50,6 +50,14 @@ export async function GET(request: NextRequest) {
       const stored = await kv.get<Feeling[]>(FEELINGS_KEY);
       const now = Date.now();
       feelings = (stored || []).filter((f) => f.expiresAt > now);
+
+      // Remove expired entries from database if any were filtered out
+      if (stored && feelings.length < stored.length) {
+        // Fire-and-forget cleanup to avoid adding latency to reads
+        kv.set(FEELINGS_KEY, feelings).catch((err) =>
+          console.error("Error cleaning up expired feelings:", err)
+        );
+      }
     }
 
     // Strip private/redundant fields for response

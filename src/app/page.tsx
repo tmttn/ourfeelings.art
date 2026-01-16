@@ -72,6 +72,7 @@ export default function Home() {
   const hasSetMobileDefaults = useRef(false);
   const etagRef = useRef<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLocalModificationRef = useRef<number>(0); // Track when we last added/updated a feeling locally
 
   // Check WebGL2 support on mount
   useEffect(() => {
@@ -241,6 +242,16 @@ export default function Home() {
         }
 
         const data = await res.json();
+
+        // Skip full replacement if we recently added/updated a feeling locally
+        // This prevents flickering when our local change is still animating in
+        const timeSinceLocalMod = Date.now() - lastLocalModificationRef.current;
+        if (timeSinceLocalMod < 5000) {
+          // Within 5 seconds of local modification - don't replace, just update ETag
+          // The local state already has the new feeling
+          return;
+        }
+
         setFeelings(data.feelings);
       }
     } catch (error) {
@@ -303,6 +314,9 @@ export default function Home() {
 
       if (res.ok) {
         const data = await res.json();
+        // Mark that we're modifying feelings locally to prevent poll from replacing
+        lastLocalModificationRef.current = Date.now();
+
         if (isUpdate) {
           // Replace the updated feeling in the list
           setFeelings((prev) =>

@@ -337,6 +337,31 @@ export default function Home() {
         if (data.remainingSeconds) {
           setRateLimitSeconds(data.remainingSeconds);
         }
+      } else if (res.status === 404 && isUpdate) {
+        // Feeling expired server-side — clear stale hash and create a new one
+        localStorage.removeItem(STORAGE_KEY);
+        setUpdateHash(null);
+        const retryRes = await fetch("/api/feelings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emotionId: emotion.id }),
+        });
+        if (retryRes.ok) {
+          const data = await retryRes.json();
+          lastLocalModificationRef.current = Date.now();
+          const newHash = data.feeling.updateHash;
+          if (newHash) {
+            localStorage.setItem(STORAGE_KEY, newHash);
+            setUpdateHash(newHash);
+          }
+          setFeelings((prev) => [...prev, data.feeling]);
+          if (data.remainingSeconds) {
+            setRateLimitSeconds(data.remainingSeconds);
+          }
+        } else if (retryRes.status === 429) {
+          const data = await retryRes.json();
+          setRateLimitSeconds(data.remainingSeconds || 0);
+        }
       } else if (res.status === 429) {
         const data = await res.json();
         setRateLimitSeconds(data.remainingSeconds || 0);

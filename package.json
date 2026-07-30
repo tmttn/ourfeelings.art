@@ -12,7 +12,7 @@
   "dependencies": {
     "@types/p5": "^1.7.7",
     "@vercel/kv": "^3.0.0",
-    "framer-motion": "^12.24.11",
+    "motion": "^12.24.11",
     "next": "16.2.9",
     "p5": "^2.1.2",
     "react": "19.2.7",
